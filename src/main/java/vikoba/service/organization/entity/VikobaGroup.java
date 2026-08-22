@@ -45,6 +45,12 @@ public class VikobaGroup extends BaseEntity {
         @Column(name = "formation_date")
         private LocalDate formationDate;
 
+        @Column(name = "start_date")
+        private LocalDate startDate;
+
+        @Column(name = "end_date")
+        private LocalDate endDate;
+
         @Enumerated(EnumType.STRING)
         @Column(name = "meeting_frequency", length = 30)
         private MeetingFrequency meetingFrequency;

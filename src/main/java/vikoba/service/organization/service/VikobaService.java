@@ -10,6 +10,7 @@ import vikoba.service.auth.entity.User;
 import vikoba.service.auth.repository.UserRepository;
 import vikoba.service.common.enums.GroupRole;
 import vikoba.service.common.enums.MembershipStatus;
+import vikoba.service.common.response.ApiResponse;
 import vikoba.service.organization.dto.VikobaGroupCreateRequest;
 import vikoba.service.organization.dto.VikobaGroupCreateResponse;
 import vikoba.service.organization.dto.GroupProfileSettingsRequest;
@@ -23,6 +24,7 @@ import vikoba.service.organization.repository.OrganizationRepository;
 import vikoba.service.organization.repository.VikobaGroupRepository;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.math.BigDecimal;
 import java.util.Locale;
 import java.util.UUID;
@@ -51,6 +53,15 @@ public class VikobaService {
                 ? "TZS"
                 : request.getCurrency().trim().toUpperCase(Locale.ROOT);
 
+        LocalDate startDate = request.getStartDate();
+        LocalDate endDate = request.getEndDate();
+
+        if (startDate == null || endDate == null) {
+            throw new IllegalArgumentException("Group start date and end date are required.");
+        }
+
+        validateGroupCycleDates(startDate, endDate);
+
         VikobaGroup group = groupRepository.save(VikobaGroup.builder()
                 .organization(organization)
                 .name(groupName)
@@ -61,6 +72,8 @@ public class VikobaService {
                 .meetingFrequency(request.getMeetingFrequency())
                 .meetingDay(blankToNull(request.getMeetingDay()))
                 .formationDate(LocalDate.now())
+                .startDate(startDate)
+                .endDate(endDate)
                 .currency(currency)
                 .build());
 
@@ -68,23 +81,64 @@ public class VikobaService {
 
         return new VikobaGroupCreateResponse(
                 organization.getId(), group.getId(), organization.getName(),
-                group.getName(), group.getCode(), group.getCurrency());
+                group.getName(), group.getCode(), group.getCurrency(), group.getStartDate(), group.getEndDate());
     }
 
     @Transactional
-    public VikobaGroupCreateResponse createGroupWithSettings(GroupProfileSettingsRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Group details are required.");
+    public ApiResponse<VikobaGroupCreateResponse> createGroupWithSettings(GroupProfileSettingsRequest request) {
+        ApiResponse<VikobaGroupCreateResponse> response = new ApiResponse<>();
+        System.out.println("========PAYLOAD");
+        System.out.println(request.getCurrency());
+        System.out.println(request.getStartDate());
+        System.out.println(request.getEndDate());
+        System.out.println("========PAYLOAD END");
+
+        String groupName = required(request.getName(), "name");
+        User user = currentUser();
+        Organization organization = resolveOrganizationForUser(user);
+
+        String currency = request.getCurrency() == null || request.getCurrency().isBlank()
+                ? "TZS"
+                : request.getCurrency().trim().toUpperCase(Locale.ROOT);
+
+        LocalDate startDate = request.getStartDate();
+        LocalDate endDate = request.getEndDate();
+
+        if (startDate == null || endDate == null) {
+            throw new IllegalArgumentException("Group start date and end date are required.");
         }
 
-        VikobaGroupCreateRequest createRequest = new VikobaGroupCreateRequest();
-        createRequest.setName(request.getName());
-        createRequest.setPhone(request.getPhone());
-        createRequest.setEmail(request.getEmail());
-        createRequest.setCurrency(request.getCurrency());
-        createRequest.setSettings(request.getSettings());
+        validateGroupCycleDates(startDate, endDate);
 
-        return createGroup(createRequest);
+        VikobaGroup group = groupRepository.save(VikobaGroup.builder()
+                .organization(organization)
+                .name(groupName)
+                .code(uniqueCode(groupName))
+                .phone(blankToNull(request.getPhone()))
+                .email(blankToNull(request.getEmail()))
+                .description(null)
+                .meetingFrequency(null)
+                .meetingDay(null)
+                .formationDate(LocalDate.now())
+                .startDate(startDate)
+                .endDate(endDate)
+                .currency(currency)
+                .build());
+
+        createGroupSettings(group, request.getSettings());
+
+        VikobaGroupCreateResponse groupResponse = new VikobaGroupCreateResponse(
+                organization.getId(),
+                group.getId(),
+                organization.getName(),
+                group.getName(),
+                group.getCode(),
+                group.getCurrency(),
+                group.getStartDate(),
+                group.getEndDate());
+
+        return new ApiResponse<>(true, "Group created successfully.", groupResponse);
+
     }
 
     @Transactional
@@ -127,7 +181,9 @@ public class VikobaService {
                 group.getOrganization().getName(),
                 group.getName(),
                 group.getCode(),
-                group.getCurrency());
+                group.getCurrency(),
+                group.getStartDate(),
+                group.getEndDate());
     }
 
     @Transactional
@@ -152,6 +208,31 @@ public class VikobaService {
                 .orElseGet(() -> GroupSettings.builder().group(group).build());
         applySettings(settings, request);
         return groupSettingsRepository.save(settings);
+    }
+
+    public static void validateGroupCycleDates(
+            LocalDate startDate,
+            LocalDate endDate) {
+        if (startDate == null) {
+            throw new IllegalArgumentException("startDate is required.");
+        }
+
+        if (endDate == null) {
+            throw new IllegalArgumentException("endDate is required.");
+        }
+
+        if (endDate.isBefore(startDate)) {
+            throw new IllegalArgumentException(
+                    "endDate must be after startDate.");
+        }
+
+        long cycleDays = ChronoUnit.DAYS.between(startDate, endDate);
+
+        if (cycleDays <= 0) {
+            throw new IllegalArgumentException(
+                    "The Kikoba end date must be after the start date. " +
+                            "Please choose a valid date range.");
+        }
     }
 
     private void createGroupSettings(VikobaGroup group, GroupSettingsRequest request) {

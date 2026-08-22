@@ -32,14 +32,26 @@ public class OrganizationController {
     @PostMapping("/groups")
     public ResponseEntity<ApiResponse<VikobaGroupCreateResponse>> createGroup(
             @RequestBody VikobaGroupCreateRequest request) {
-        return ResponseEntity
-                .ok(ApiResponse.success("Group created successfully.", vikobaService.createGroup(request)));
+        try {
+            VikobaGroupCreateResponse response = vikobaService.createGroup(request);
+            return ResponseEntity.ok(ApiResponse.success("Group created successfully.", response));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+        }
     }
 
     @PostMapping("/groups/setup")
     public ResponseEntity<ApiResponse<VikobaGroupCreateResponse>> createGroupSetup(
             @RequestBody GroupProfileSettingsRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Group setup completed successfully.",
-                vikobaService.createGroupWithSettings(request)));
+        try {
+            ApiResponse<VikobaGroupCreateResponse> response = vikobaService.createGroupWithSettings(request);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+        }
     }
 }

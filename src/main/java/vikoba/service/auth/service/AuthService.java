@@ -79,7 +79,7 @@ public class AuthService {
                 .email(request.getEmail())
                 .phone(request.getPhone())
                 .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
-                .status(UserStatus.LOCKED)
+                .status(UserStatus.ACTIVE)
                 .failedLoginAttempts(0)
                 .build();
 
