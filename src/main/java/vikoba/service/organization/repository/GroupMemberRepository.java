@@ -1,6 +1,8 @@
 package vikoba.service.organization.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import vikoba.service.common.enums.MembershipStatus;
 import vikoba.service.organization.entity.GroupMember;
 
@@ -22,4 +24,12 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> 
             Long groupId,
             MembershipStatus status
     );
+
+    @Query("""
+        SELECT COUNT(gm)
+        FROM GroupMember gm
+        WHERE gm.group.id = :groupId
+        AND gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE
+    """)
+    Long countActiveMembersByGroupId(@Param("groupId") Long groupId);
 }
