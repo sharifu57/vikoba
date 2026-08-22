@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.RestController;
 import vikoba.service.auth.dto.AuthLookUpResponse;
 import vikoba.service.auth.dto.LoginRequest;
 import vikoba.service.auth.dto.RegisterRequest;
+import vikoba.service.auth.dto.ResendOtpRequest;
+import vikoba.service.auth.dto.UserSessionResponse;
 import vikoba.service.auth.dto.VerifyOtpRequest;
 import vikoba.service.auth.service.AuthService;
 import vikoba.service.common.response.AuthResponse;
@@ -32,9 +34,16 @@ public class AuthController {
     }
 
     @PostMapping("/verify-otp")
-    public ResponseEntity<AuthResponse<Void>> verifyOtp(
+    public ResponseEntity<AuthResponse<UserSessionResponse>> verifyOtp(
             @RequestBody VerifyOtpRequest request) {
-        AuthResponse<Void> response = authService.verifyOtp(request);
+        AuthResponse<UserSessionResponse> response = authService.verifyOtp(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/resend-otp")
+    public ResponseEntity<AuthResponse<Void>> resendOtp(
+            @RequestBody ResendOtpRequest request) {
+        AuthResponse<Void> response = authService.resendOtp(request);
         return ResponseEntity.ok(response);
     }
 }

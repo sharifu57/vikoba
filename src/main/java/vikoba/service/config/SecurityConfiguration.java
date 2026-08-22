@@ -42,6 +42,7 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/lookup", "/api/auth/register", "/api/auth/verify-otp",
                                 "/api/auth/refresh", "/api/auth/assign-permissions", "/api/auth/logout",
+                                "/api/auth/resend-otp",
                                 "/api/auth/roles", "/api/auth/staff-invite")
                         .permitAll()
                         .anyRequest().authenticated())
@@ -59,8 +60,10 @@ public class SecurityConfiguration {
         configuration.setAllowedOrigins(
                 List.of("http://localhost:3000", "http://localhost:3001", "https://uat.tcbbank.co.tz",
                         "https://uat.tcbbank.co.tz:8443"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        configuration
+                .setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
+        configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

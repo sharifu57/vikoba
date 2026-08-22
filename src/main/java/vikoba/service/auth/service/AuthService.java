@@ -8,6 +8,8 @@ import vikoba.service.config.JwtService;
 import vikoba.service.auth.dto.AuthLookUpResponse;
 import vikoba.service.auth.dto.LoginRequest;
 import vikoba.service.auth.dto.RegisterRequest;
+import vikoba.service.auth.dto.ResendOtpRequest;
+import vikoba.service.auth.dto.UserSessionResponse;
 import vikoba.service.auth.dto.VerifyOtpRequest;
 import vikoba.service.auth.entity.OTP;
 import vikoba.service.auth.entity.User;
@@ -39,14 +41,14 @@ public class AuthService {
         if (optionalUser.isEmpty()) {
 
             return new AuthResponse<>(
-                    true,
+                    false,
                     "New user registration required.",
                     new AuthLookUpResponse(AuthStatus.NEW));
         }
 
         User user = optionalUser.get();
 
-        if (!user.getStatus().equals(UserStatus.ACTIVE)) {
+        if (user.getStatus().equals(UserStatus.DISABLED)) {
             return new AuthResponse<>(
                     false,
                     "Your account has been disabled.",
@@ -91,7 +93,32 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse<Void> verifyOtp(VerifyOtpRequest request) {
+    public AuthResponse<Void> resendOtp(ResendOtpRequest request) {
+        String phone = request.getPhone();
+        String purpose = request.getPurpose() == null || request.getPurpose().isBlank()
+                ? "login"
+                : request.getPurpose();
+
+        if (phone == null || phone.isBlank()) {
+            return new AuthResponse<>(false, "Phone number is required.", null);
+        }
+
+        Optional<User> optionalUser = userRepository.findByPhone(phone);
+        if (optionalUser.isEmpty()) {
+            return new AuthResponse<>(false, "No user found for this phone number.", null);
+        }
+
+        User user = optionalUser.get();
+        if (user.getStatus() != null && user.getStatus().equals(UserStatus.DISABLED)) {
+            return new AuthResponse<>(false, "Your account has been disabled.", null);
+        }
+
+        createOtp(user, purpose);
+        return new AuthResponse<>(true, "OTP resent successfully.", null);
+    }
+
+    @Transactional
+    public AuthResponse<UserSessionResponse> verifyOtp(VerifyOtpRequest request) {
         String purpose = request.getPurpose() == null || request.getPurpose().isBlank()
                 ? "login"
                 : request.getPurpose();
@@ -141,7 +168,15 @@ public class AuthService {
         user.setLastLoginAt(now);
         userRepository.save(user);
 
-        AuthResponse<Void> response = new AuthResponse<>(true, "Login successful.", null);
+        UserSessionResponse userSession = new UserSessionResponse(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getStatus(),
+                user.getLastLoginAt());
+
+        AuthResponse<UserSessionResponse> response = new AuthResponse<>(true, "Login successful.", userSession);
         response.setToken(jwtService.generateAccessToken(user.getPhone()));
         response.setRefreshToken(jwtService.generateRefreshToken(user.getPhone()));
         response.setExpired(String.valueOf(jwtService.getExpirationTime()));

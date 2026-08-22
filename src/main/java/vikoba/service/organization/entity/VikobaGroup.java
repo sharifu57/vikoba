@@ -33,6 +33,9 @@ public class VikobaGroup extends BaseEntity {
         @Column(name = "phone", length = 30)
         private String phone;
 
+        @Column(name = "email", length = 150)
+        private String email;
+
         @Column(name = "registration_number", length = 100)
         private String registrationNumber;
 
