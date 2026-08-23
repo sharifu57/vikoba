@@ -70,4 +70,10 @@ public class VikobaGroup extends BaseEntity {
         @OneToMany(mappedBy = "group", fetch = FetchType.LAZY)
         @Builder.Default
         private List<GroupMember> members = new ArrayList<>();
+
+        @OneToOne(
+                mappedBy = "group",
+                fetch = FetchType.LAZY
+        )
+        private GroupSettings settings;
 }

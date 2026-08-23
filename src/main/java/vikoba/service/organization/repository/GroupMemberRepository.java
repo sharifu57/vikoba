@@ -32,4 +32,19 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> 
         AND gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE
     """)
     Long countActiveMembersByGroupId(@Param("groupId") Long groupId);
+
+
+    @Query("""
+        SELECT gm
+        FROM GroupMember gm
+        JOIN FETCH gm.group g
+        JOIN FETCH g.organization
+        WHERE gm.member.id = :memberId
+        AND gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE
+        ORDER BY gm.id ASC
+    """)
+    List<GroupMember> findActiveGroupsByMemberId(
+            @Param("memberId") Long memberId
+    );
+
 }

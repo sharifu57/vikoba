@@ -11,6 +11,7 @@ import vikoba.service.auth.dto.LoginRequest;
 import vikoba.service.auth.dto.RegisterRequest;
 import vikoba.service.auth.dto.ResendOtpRequest;
 import vikoba.service.auth.dto.UserSessionResponse;
+import vikoba.service.auth.dto.UserSessionWithGroupResponse;
 import vikoba.service.auth.dto.VerifyOtpRequest;
 import vikoba.service.auth.service.AuthService;
 import vikoba.service.common.response.AuthResponse;
@@ -34,9 +35,9 @@ public class AuthController {
     }
 
     @PostMapping("/verify-otp")
-    public ResponseEntity<AuthResponse<UserSessionResponse>> verifyOtp(
+    public ResponseEntity<AuthResponse<UserSessionWithGroupResponse>> verifyOtp(
             @RequestBody VerifyOtpRequest request) {
-        AuthResponse<UserSessionResponse> response = authService.verifyOtp(request);
+        AuthResponse<UserSessionWithGroupResponse> response = authService.verifyOtp(request);
         return ResponseEntity.ok(response);
     }
 
