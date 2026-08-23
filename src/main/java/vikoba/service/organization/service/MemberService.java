@@ -1,11 +1,15 @@
 package vikoba.service.organization.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vikoba.service.auth.entity.User;
+import vikoba.service.auth.repository.UserRepository;
 import vikoba.service.common.enums.GroupRole;
 import vikoba.service.common.enums.MembershipStatus;
 import vikoba.service.common.enums.MembershipType;
+import vikoba.service.common.enums.UserStatus;
 import vikoba.service.common.response.ApiResponse;
 import vikoba.service.organization.dto.AddMemberRequest;
 import vikoba.service.organization.dto.MemberResponse;
@@ -33,86 +37,276 @@ public class MemberService {
     private final GroupMemberRepository groupMemberRepository;
     private final MemberRoleRepository memberRoleRepository;
     private final VikobaGroupRepository groupRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional
-    public ApiResponse<MemberResponse> addMemberToGroup(AddMemberRequest request) {
+    public ApiResponse<MemberResponse> addMemberToGroup(
+            AddMemberRequest request) {
+
+        // ============================================================
+        // 1. VALIDATE REQUEST
+        // ============================================================
+
         if (request == null) {
-            throw new IllegalArgumentException("Member details are required.");
+            throw new IllegalArgumentException(
+                    "Member details are required."
+            );
         }
 
         Long groupId = request.getGroupId();
+
         if (groupId == null) {
-            throw new IllegalArgumentException("groupId is required.");
+            throw new IllegalArgumentException(
+                    "groupId is required."
+            );
         }
+
+        // ============================================================
+        // 2. FIND GROUP
+        // ============================================================
 
         VikobaGroup group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new IllegalArgumentException("Group not found."));
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "Group not found."
+                        )
+                );
 
-        String firstName = required(request.getFirstName(), "firstName");
-        String lastName = required(request.getLastName(), "lastName");
-        String phone = required(request.getPhone(), "phone");
+        // ============================================================
+        // 3. VALIDATE MEMBER DETAILS
+        // ============================================================
 
-        Member existingMember = memberRepository.findByPhone(phone).orElse(null);
-        if (existingMember != null
-                && groupMemberRepository.existsByGroupIdAndMemberId(groupId, existingMember.getId())) {
-            throw new IllegalArgumentException("This member already exists in this group.");
-        }
+        String firstName =
+                required(request.getFirstName(), "firstName");
 
-        GroupRole selectedRole = request.getRole() == null ? GroupRole.MEMBER : request.getRole();
+        String lastName =
+                required(request.getLastName(), "lastName");
 
-        Member member = existingMember;
-        if (member == null) {
-            member = memberRepository.save(Member.builder()
-                    .memberNumber(uniqueMemberNumber())
-                    .firstName(firstName)
-                    .middleName(blankToNull(request.getMiddleName()))
-                    .lastName(lastName)
-                    .phone(phone)
-                    .email(blankToNull(request.getEmail()))
-                    .nationalId(blankToNull(request.getNationalId()))
-                    .address(blankToNull(request.getAddress()))
-                    .occupation(blankToNull(request.getOccupation()))
-                    .nextOfKinName(blankToNull(request.getNextOfKinName()))
-                    .nextOfKinPhone(blankToNull(request.getNextOfKinPhone()))
-                    .nextOfKinRelationship(blankToNull(request.getNextOfKinRelationship()))
-                    .build());
-        } else {
+        String phone =
+                required(request.getPhone(), "phone");
+
+        phone = phone.trim();
+
+        String email = blankToNull(request.getEmail());
+
+        // ============================================================
+        // 4. CHECK IF MEMBER ALREADY EXISTS
+        // ============================================================
+
+        Member member =
+                memberRepository.findByPhone(phone)
+                        .orElse(null);
+
+        if (member != null) {
+
+            // --------------------------------------------------------
+            // Member already belongs to this group?
+            // --------------------------------------------------------
+
+            if (groupMemberRepository
+                    .existsByGroupIdAndMemberId(
+                            groupId,
+                            member.getId())) {
+
+                throw new IllegalArgumentException(
+                        "This member already exists in this group."
+                );
+            }
+
+            // --------------------------------------------------------
+            // Update member information
+            // --------------------------------------------------------
+
             member.setFirstName(firstName);
-            member.setMiddleName(blankToNull(request.getMiddleName()));
+            member.setMiddleName(
+                    blankToNull(request.getMiddleName())
+            );
             member.setLastName(lastName);
             member.setPhone(phone);
-            member.setEmail(blankToNull(request.getEmail()));
-            member.setNationalId(blankToNull(request.getNationalId()));
-            member.setAddress(blankToNull(request.getAddress()));
-            member.setOccupation(blankToNull(request.getOccupation()));
-            member.setNextOfKinName(blankToNull(request.getNextOfKinName()));
-            member.setNextOfKinPhone(blankToNull(request.getNextOfKinPhone()));
-            member.setNextOfKinRelationship(blankToNull(request.getNextOfKinRelationship()));
+            member.setEmail(email);
+            member.setNationalId(
+                    blankToNull(request.getNationalId())
+            );
+            member.setAddress(
+                    blankToNull(request.getAddress())
+            );
+            member.setOccupation(
+                    blankToNull(request.getOccupation())
+            );
+            member.setNextOfKinName(
+                    blankToNull(request.getNextOfKinName())
+            );
+            member.setNextOfKinPhone(
+                    blankToNull(request.getNextOfKinPhone())
+            );
+            member.setNextOfKinRelationship(
+                    blankToNull(request.getNextOfKinRelationship())
+            );
+
+            member = memberRepository.save(member);
+
+        } else {
+
+            // --------------------------------------------------------
+            // Create NEW member
+            // --------------------------------------------------------
+
+            member = Member.builder()
+                    .memberNumber(uniqueMemberNumber())
+                    .firstName(firstName)
+                    .middleName(
+                            blankToNull(request.getMiddleName())
+                    )
+                    .lastName(lastName)
+                    .phone(phone)
+                    .email(email)
+                    .nationalId(
+                            blankToNull(request.getNationalId())
+                    )
+                    .address(
+                            blankToNull(request.getAddress())
+                    )
+                    .occupation(
+                            blankToNull(request.getOccupation())
+                    )
+                    .nextOfKinName(
+                            blankToNull(request.getNextOfKinName())
+                    )
+                    .nextOfKinPhone(
+                            blankToNull(request.getNextOfKinPhone())
+                    )
+                    .nextOfKinRelationship(
+                            blankToNull(request.getNextOfKinRelationship())
+                    )
+                    .build();
+
             member = memberRepository.save(member);
         }
 
-        LocalDate joinedDate = request.getJoinedDate() == null ? LocalDate.now() : request.getJoinedDate();
+        // ============================================================
+        // 5. CREATE OR LINK USER ACCOUNT
+        // ============================================================
 
-        GroupMember groupMember = groupMemberRepository.save(GroupMember.builder()
-                .group(group)
-                .member(member)
-                .membershipNumber(uniqueMembershipNumber(groupId))
-                .joinedDate(joinedDate)
-                .membershipType(
-                        request.getMembershipType() == null ? MembershipType.ORDINARY : request.getMembershipType())
-                .status(MembershipStatus.ACTIVE)
-                .build());
+        User user =
+                userRepository.findByPhone(phone)
+                        .orElse(null);
 
-        MemberRole memberRole = memberRoleRepository.save(MemberRole.builder()
-                .groupMember(groupMember)
-                .role(selectedRole)
-                .startDate(joinedDate)
-                .endDate(null)
-                .active(true)
-                .build());
+        if (user == null) {
 
-        return ApiResponse.success("Member added successfully to the group.",
-                mapToResponse(group, member, groupMember, memberRole));
+            // --------------------------------------------------------
+            // Create login account for member
+            // --------------------------------------------------------
+
+            String username =
+                    (firstName + " " + lastName).trim();
+
+            user = User.builder()
+                    .member(member)
+                    .username(username)
+                    .email(email)
+                    .phone(phone)
+
+                    // Temporary random password.
+                    // Login is OTP based.
+                    .passwordHash(
+                            passwordEncoder.encode(
+                                    UUID.randomUUID().toString()
+                            )
+                    )
+
+                    .status(UserStatus.ACTIVE)
+                    .failedLoginAttempts(0)
+                    .build();
+
+            user = userRepository.save(user);
+
+        } else {
+
+            // --------------------------------------------------------
+            // User already exists
+            // --------------------------------------------------------
+
+            if (user.getMember() == null) {
+
+                user.setMember(member);
+
+                userRepository.save(user);
+
+            } else if (!user.getMember().getId()
+                    .equals(member.getId())) {
+
+                throw new IllegalArgumentException(
+                        "This phone number is already associated with another member account."
+                );
+            }
+        }
+
+        // ============================================================
+        // 6. CREATE GROUP MEMBERSHIP
+        // ============================================================
+
+        LocalDate joinedDate =
+                request.getJoinedDate() == null
+                        ? LocalDate.now()
+                        : request.getJoinedDate();
+
+        MembershipType membershipType =
+                request.getMembershipType() == null
+                        ? MembershipType.ORDINARY
+                        : request.getMembershipType();
+
+        GroupMember groupMember =
+                groupMemberRepository.save(
+                        GroupMember.builder()
+                                .group(group)
+                                .member(member)
+                                .membershipNumber(
+                                        uniqueMembershipNumber(groupId)
+                                )
+                                .joinedDate(joinedDate)
+                                .membershipType(
+                                        membershipType
+                                )
+                                .status(
+                                        MembershipStatus.ACTIVE
+                                )
+                                .build()
+                );
+
+        // ============================================================
+        // 7. CREATE GROUP ROLE
+        // ============================================================
+
+        GroupRole selectedRole =
+                request.getRole() == null
+                        ? GroupRole.MEMBER
+                        : request.getRole();
+
+        MemberRole memberRole =
+                memberRoleRepository.save(
+                        MemberRole.builder()
+                                .groupMember(groupMember)
+                                .role(selectedRole)
+                                .startDate(joinedDate)
+                                .endDate(null)
+                                .active(true)
+                                .build()
+                );
+
+        // ============================================================
+        // 8. RETURN RESPONSE
+        // ============================================================
+
+        return ApiResponse.success(
+                "Member added successfully to the group.",
+                mapToResponse(
+                        group,
+                        member,
+                        groupMember,
+                        memberRole
+                )
+        );
     }
 
     public List<MemberRoleOptionResponse> getMemberRoles() {

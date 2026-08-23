@@ -13,6 +13,8 @@ import vikoba.service.organization.dto.AddMemberRequest;
 import vikoba.service.organization.dto.MemberResponse;
 import vikoba.service.organization.dto.MemberRoleOptionResponse;
 import vikoba.service.organization.service.MemberService;
+import vikoba.service.member360.service.Member360Service;
+import vikoba.service.member360.dto.Member360Response;
 
 import java.util.List;
 
@@ -21,6 +23,7 @@ import java.util.List;
 @RequestMapping("/api")
 public class MemberController {
     private final MemberService memberService;
+    private final Member360Service member360Service;
 
     @PostMapping("/members")
     public ResponseEntity<ApiResponse<MemberResponse>> addMember(@RequestBody AddMemberRequest request) {
@@ -44,6 +47,18 @@ public class MemberController {
         try {
             return ResponseEntity.ok(
                     ApiResponse.success("Members retrieved successfully.", memberService.getMembersByGroup(groupId)));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/members/{id}/360")
+    public ResponseEntity<ApiResponse<Member360Response>> getMember360(@PathVariable("id") Long groupMemberId) {
+        try {
+            Member360Response resp = member360Service.getMember360(groupMemberId);
+            return ResponseEntity.ok(ApiResponse.success("Member details retrieved successfully.", resp));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {

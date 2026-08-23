@@ -337,10 +337,14 @@ public class AuthService {
         // 6. FIND USER
         // ============================================================
 
-        User user =
-                userRepository
-                        .findByPhone(request.getPhone())
-                        .orElse(null);
+//        User user =
+//                userRepository
+//                        .findByPhone(request.getPhone())
+//                        .orElse(null);
+
+        User user = userRepository
+                .findByPhoneWithMember(request.getPhone())
+                .orElse(null);
 
         if (user == null) {
 
