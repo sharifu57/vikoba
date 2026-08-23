@@ -19,12 +19,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
 
     @Query("""
-    SELECT u
-    FROM User u
-    LEFT JOIN FETCH u.member
-    WHERE u.phone = :phone
-""")
+                SELECT u
+                FROM User u
+                LEFT JOIN FETCH u.member
+                WHERE u.phone = :phone
+            """)
     Optional<User> findByPhoneWithMember(
-            @Param("phone") String phone
-    );
+            @Param("phone") String phone);
+
+    @Query("""
+                SELECT u FROM User u
+                WHERE u.member.id = :memberId
+            """)
+    Optional<User> findByMemberId(@Param("memberId") Long memberId);
 }

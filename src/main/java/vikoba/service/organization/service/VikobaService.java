@@ -118,7 +118,8 @@ public class VikobaService {
                         .build());
             }
         } catch (Exception ex) {
-            // fail-safe: log and continue - group creation succeeded even if member linking failed
+            // fail-safe: log and continue - group creation succeeded even if member linking
+            // failed
             System.err.println("Unable to attach creating user as group member: " + ex.getMessage());
         }
 
@@ -129,8 +130,7 @@ public class VikobaService {
 
     @Transactional
     public ApiResponse<GroupWithSettingsResponse> createGroupWithSettings(
-            GroupProfileSettingsRequest request
-    ) {
+            GroupProfileSettingsRequest request) {
 
         // ============================================================
         // 1. VALIDATE REQUEST
@@ -140,20 +140,17 @@ public class VikobaService {
 
         if (request.getStartDate() == null) {
             throw new IllegalArgumentException(
-                    "Group start date is required."
-            );
+                    "Group start date is required.");
         }
 
         if (request.getEndDate() == null) {
             throw new IllegalArgumentException(
-                    "Group end date is required."
-            );
+                    "Group end date is required.");
         }
 
         validateGroupCycleDates(
                 request.getStartDate(),
-                request.getEndDate()
-        );
+                request.getEndDate());
 
         // ============================================================
         // 2. GET CURRENT USER
@@ -163,8 +160,7 @@ public class VikobaService {
 
         if (user == null) {
             throw new IllegalStateException(
-                    "Authenticated user not found."
-            );
+                    "Authenticated user not found.");
         }
 
         // ============================================================
@@ -177,48 +173,44 @@ public class VikobaService {
 
             throw new IllegalStateException(
                     "Your account is not associated with a member profile. "
-                            + "Please complete your member registration first."
-            );
+                            + "Please complete your member registration first.");
         }
 
         // ============================================================
         // 4. RESOLVE ORGANIZATION
         // ============================================================
 
-        Organization organization =
-                resolveOrganizationForUser(user);
+        Organization organization = resolveOrganizationForUser(user);
 
         // ============================================================
         // 5. CURRENCY
         // ============================================================
 
-        String currency =
-                request.getCurrency() == null
-                        || request.getCurrency().isBlank()
+        String currency = request.getCurrency() == null
+                || request.getCurrency().isBlank()
                         ? "TZS"
                         : request.getCurrency()
-                        .trim()
-                        .toUpperCase(Locale.ROOT);
+                                .trim()
+                                .toUpperCase(Locale.ROOT);
 
         // ============================================================
         // 6. CREATE GROUP
         // ============================================================
 
-        VikobaGroup group =
-                VikobaGroup.builder()
-                        .organization(organization)
-                        .name(groupName)
-                        .code(uniqueCode(groupName))
-                        .phone(blankToNull(request.getPhone()))
-                        .email(blankToNull(request.getEmail()))
-                        .description(null)
-                        .meetingFrequency(null)
-                        .meetingDay(null)
-                        .formationDate(LocalDate.now())
-                        .startDate(request.getStartDate())
-                        .endDate(request.getEndDate())
-                        .currency(currency)
-                        .build();
+        VikobaGroup group = VikobaGroup.builder()
+                .organization(organization)
+                .name(groupName)
+                .code(uniqueCode(groupName))
+                .phone(blankToNull(request.getPhone()))
+                .email(blankToNull(request.getEmail()))
+                .description(null)
+                .meetingFrequency(null)
+                .meetingDay(null)
+                .formationDate(LocalDate.now())
+                .startDate(request.getStartDate())
+                .endDate(request.getEndDate())
+                .currency(currency)
+                .build();
 
         group = groupRepository.save(group);
 
@@ -228,36 +220,29 @@ public class VikobaService {
 
         createGroupSettings(
                 group,
-                request.getSettings()
-        );
+                request.getSettings());
 
         // ============================================================
         // 8. CREATE GROUP MEMBERSHIP
         // ============================================================
 
-        boolean alreadyMember =
-                groupMemberRepository.existsByGroupIdAndMemberId(
-                        group.getId(),
-                        member.getId()
-                );
+        boolean alreadyMember = groupMemberRepository.existsByGroupIdAndMemberId(
+                group.getId(),
+                member.getId());
 
         if (!alreadyMember) {
 
-            GroupMember groupMember =
-                    GroupMember.builder()
-                            .group(group)
-                            .member(member)
-                            .membershipNumber(
-                                    generateMembershipNumber(group)
-                            )
-                            .joinedDate(LocalDate.now())
-                            .membershipType(
-                                    MembershipType.ORDINARY
-                            )
-                            .status(
-                                    MembershipStatus.ACTIVE
-                            )
-                            .build();
+            GroupMember groupMember = GroupMember.builder()
+                    .group(group)
+                    .member(member)
+                    .membershipNumber(
+                            generateMembershipNumber(group))
+                    .joinedDate(LocalDate.now())
+                    .membershipType(
+                            MembershipType.ORDINARY)
+                    .status(
+                            MembershipStatus.ACTIVE)
+                    .build();
 
             groupMemberRepository.save(groupMember);
         }
@@ -266,17 +251,15 @@ public class VikobaService {
         // 9. BUILD GROUP RESPONSE
         // ============================================================
 
-        VikobaGroupCreateResponse groupResponse =
-                new VikobaGroupCreateResponse(
-                        organization.getId(),
-                        group.getId(),
-                        organization.getName(),
-                        group.getName(),
-                        group.getCode(),
-                        group.getCurrency(),
-                        group.getStartDate(),
-                        group.getEndDate()
-                );
+        VikobaGroupCreateResponse groupResponse = new VikobaGroupCreateResponse(
+                organization.getId(),
+                group.getId(),
+                organization.getName(),
+                group.getName(),
+                group.getCode(),
+                group.getCurrency(),
+                group.getStartDate(),
+                group.getEndDate());
 
         // ============================================================
         // 10. GET SETTINGS
@@ -284,67 +267,98 @@ public class VikobaService {
 
         GroupSettingsRequest settingsRequest = null;
 
-        Optional<GroupSettings> optionalSettings =
-                groupSettingsRepository.findByGroupId(
-                        group.getId()
-                );
+        Optional<GroupSettings> optionalSettings = groupSettingsRepository.findByGroupId(
+                group.getId());
 
         if (optionalSettings.isPresent()) {
 
-            GroupSettings settings =
-                    optionalSettings.get();
+            GroupSettings settings = optionalSettings.get();
 
-            settingsRequest =
-                    new GroupSettingsRequest();
+            settingsRequest = new GroupSettingsRequest();
 
             settingsRequest.setMinimumContribution(
-                    settings.getMinimumContribution()
-            );
+                    settings.getMinimumContribution());
 
             settingsRequest.setMaximumContribution(
-                    settings.getMaximumContribution()
-            );
+                    settings.getMaximumContribution());
 
             settingsRequest.setSharePrice(
-                    settings.getSharePrice()
-            );
+                    settings.getSharePrice());
 
             settingsRequest.setMaximumSharesPerMember(
-                    settings.getMaximumSharesPerMember()
-            );
+                    settings.getMaximumSharesPerMember());
 
             settingsRequest.setLoanMultiplier(
-                    settings.getLoanMultiplier()
-            );
+                    settings.getLoanMultiplier());
 
             settingsRequest.setDefaultInterestRate(
-                    settings.getDefaultInterestRate()
-            );
+                    settings.getDefaultInterestRate());
 
             settingsRequest.setDefaultLoanDurationMonths(
-                    settings.getDefaultLoanDurationMonths()
-            );
+                    settings.getDefaultLoanDurationMonths());
 
             settingsRequest.setLatePaymentFine(
-                    settings.getLatePaymentFine()
-            );
+                    settings.getLatePaymentFine());
         }
 
         // ============================================================
         // 11. FINAL RESPONSE
         // ============================================================
 
-        GroupWithSettingsResponse result =
-                new GroupWithSettingsResponse(
-                        groupResponse,
-                        settingsRequest
-                );
+        GroupWithSettingsResponse result = new GroupWithSettingsResponse(
+                groupResponse,
+                settingsRequest);
 
         return new ApiResponse<>(
                 true,
                 "Group created successfully.",
-                result
-        );
+                result);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<GroupWithSettingsResponse> listGroupsForCurrentUser() {
+        User user = currentUser();
+        if (user == null || user.getMember() == null || user.getMember().getId() == null) {
+            return java.util.Collections.emptyList();
+        }
+
+        java.util.List<GroupMember> groupMembers = groupMemberRepository
+                .findActiveGroupsByMemberId(user.getMember().getId());
+        java.util.List<GroupWithSettingsResponse> results = new java.util.ArrayList<>();
+        for (GroupMember gm : groupMembers) {
+            VikobaGroup g = gm.getGroup();
+
+            // load settings if present
+            GroupSettingsRequest settingsRequest = null;
+            java.util.Optional<GroupSettings> optionalSettings = groupSettingsRepository.findByGroupId(g.getId());
+            boolean configured = false;
+            if (optionalSettings.isPresent()) {
+                GroupSettings s = optionalSettings.get();
+                settingsRequest = new GroupSettingsRequest();
+                settingsRequest.setMinimumContribution(s.getMinimumContribution());
+                settingsRequest.setMaximumContribution(s.getMaximumContribution());
+                settingsRequest.setSharePrice(s.getSharePrice());
+                settingsRequest.setMaximumSharesPerMember(s.getMaximumSharesPerMember());
+                settingsRequest.setLoanMultiplier(s.getLoanMultiplier());
+                settingsRequest.setDefaultInterestRate(s.getDefaultInterestRate());
+                settingsRequest.setDefaultLoanDurationMonths(s.getDefaultLoanDurationMonths());
+                settingsRequest.setLatePaymentFine(s.getLatePaymentFine());
+                configured = true;
+            }
+
+            VikobaGroupCreateResponse groupResponse = new VikobaGroupCreateResponse(
+                    g.getOrganization().getId(),
+                    g.getId(),
+                    g.getOrganization().getName(),
+                    g.getName(),
+                    g.getCode(),
+                    g.getCurrency(),
+                    g.getStartDate(),
+                    g.getEndDate());
+
+            results.add(new GroupWithSettingsResponse(groupResponse, settingsRequest, configured));
+        }
+        return results;
     }
 
     private String generateMembershipNumber(VikobaGroup group) {
@@ -352,9 +366,9 @@ public class VikobaService {
         return group.getCode()
                 + "-"
                 + UUID.randomUUID()
-                .toString()
-                .substring(0, 8)
-                .toUpperCase();
+                        .toString()
+                        .substring(0, 8)
+                        .toUpperCase();
     }
 
     @Transactional
@@ -420,27 +434,22 @@ public class VikobaService {
 
         VikobaGroup group = groupRepository
                 .findByIdWithOrganization(groupId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Group was not found."
-                        )
-                );
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Group was not found."));
 
         // ============================================================
         // 2. BUILD GROUP RESPONSE
         // ============================================================
 
-        VikobaGroupCreateResponse groupResponse =
-                new VikobaGroupCreateResponse(
-                        group.getOrganization().getId(),
-                        group.getId(),
-                        group.getOrganization().getName(),
-                        group.getName(),
-                        group.getCode(),
-                        group.getCurrency(),
-                        group.getStartDate(),
-                        group.getEndDate()
-                );
+        VikobaGroupCreateResponse groupResponse = new VikobaGroupCreateResponse(
+                group.getOrganization().getId(),
+                group.getId(),
+                group.getOrganization().getName(),
+                group.getName(),
+                group.getCode(),
+                group.getCurrency(),
+                group.getStartDate(),
+                group.getEndDate());
 
         // ============================================================
         // 3. LOAD GROUP SETTINGS
@@ -448,47 +457,37 @@ public class VikobaService {
 
         GroupSettingsRequest settingsRequest = null;
 
-        Optional<GroupSettings> optionalSettings =
-                groupSettingsRepository.findByGroupId(groupId);
+        Optional<GroupSettings> optionalSettings = groupSettingsRepository.findByGroupId(groupId);
 
         if (optionalSettings.isPresent()) {
 
-            GroupSettings settings =
-                    optionalSettings.get();
+            GroupSettings settings = optionalSettings.get();
 
             settingsRequest = new GroupSettingsRequest();
 
             settingsRequest.setMinimumContribution(
-                    settings.getMinimumContribution()
-            );
+                    settings.getMinimumContribution());
 
             settingsRequest.setMaximumContribution(
-                    settings.getMaximumContribution()
-            );
+                    settings.getMaximumContribution());
 
             settingsRequest.setSharePrice(
-                    settings.getSharePrice()
-            );
+                    settings.getSharePrice());
 
             settingsRequest.setMaximumSharesPerMember(
-                    settings.getMaximumSharesPerMember()
-            );
+                    settings.getMaximumSharesPerMember());
 
             settingsRequest.setLoanMultiplier(
-                    settings.getLoanMultiplier()
-            );
+                    settings.getLoanMultiplier());
 
             settingsRequest.setDefaultInterestRate(
-                    settings.getDefaultInterestRate()
-            );
+                    settings.getDefaultInterestRate());
 
             settingsRequest.setDefaultLoanDurationMonths(
-                    settings.getDefaultLoanDurationMonths()
-            );
+                    settings.getDefaultLoanDurationMonths());
 
             settingsRequest.setLatePaymentFine(
-                    settings.getLatePaymentFine()
-            );
+                    settings.getLatePaymentFine());
         }
 
         // ============================================================
@@ -497,8 +496,7 @@ public class VikobaService {
 
         return new GroupWithSettingsResponse(
                 groupResponse,
-                settingsRequest
-        );
+                settingsRequest);
     }
 
     @Transactional
@@ -680,24 +678,26 @@ public class VikobaService {
                 .replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
     }
 
-        private Member buildMemberFromUser(User user) {
+    private Member buildMemberFromUser(User user) {
         String fullName = user.getUsername() == null || user.getUsername().isBlank()
-            ? "Group Owner"
-            : user.getUsername().trim();
+                ? "Group Owner"
+                : user.getUsername().trim();
         String[] nameParts = fullName.split("\\s+", 2);
         String firstName = nameParts[0];
         String lastName = nameParts.length > 1 ? nameParts[1] : firstName;
 
         return Member.builder()
-            .memberNumber("MBR-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT))
-            .firstName(firstName)
-            .lastName(lastName)
-            .phone(user.getPhone())
-            .email(user.getEmail())
-            .build();
-        }
+                .memberNumber(
+                        "MBR-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT))
+                .firstName(firstName)
+                .lastName(lastName)
+                .phone(user.getPhone())
+                .email(user.getEmail())
+                .build();
+    }
 
-        private String uniqueMembershipNumber(Long groupId) {
-        return "MEM-" + groupId + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase(Locale.ROOT);
-        }
+    private String uniqueMembershipNumber(Long groupId) {
+        return "MEM-" + groupId + "-"
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase(Locale.ROOT);
+    }
 }

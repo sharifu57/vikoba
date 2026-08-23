@@ -70,4 +70,16 @@ public class OrganizationController {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }
     }
+
+    @GetMapping("/groups")
+    public ResponseEntity<ApiResponse<java.util.List<GroupWithSettingsResponse>>> listGroups() {
+        try {
+            java.util.List<GroupWithSettingsResponse> resp = vikobaService.listGroupsForCurrentUser();
+            return ResponseEntity.ok(ApiResponse.success("Groups retrieved.", resp));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+        }
+    }
 }
