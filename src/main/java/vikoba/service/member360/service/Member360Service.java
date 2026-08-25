@@ -31,6 +31,7 @@ import vikoba.service.organization.dto.MemberResponse;
 
 import java.util.List;
 import java.util.Optional;
+import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
@@ -105,11 +106,8 @@ public class Member360Service {
         /*
          * IMPORTANT:
          *
-         * MemberResponse.id should be MEMBER ID.
-         *
-         * groupMemberId is GroupMember ID.
-         *
-         * They are not necessarily the same.
+         * MemberResponse.id is the GroupMember ID, which is also the id
+         * received by this endpoint. memberId is the underlying Member ID.
          */
 
         MemberResponse memberResponse =
@@ -118,7 +116,7 @@ public class Member360Service {
                         .stream()
                         .filter(m ->
                                 m.getId() != null
-                                        && m.getId().equals(member.getId())
+                                        && m.getId().equals(groupMemberId)
                         )
                         .findFirst()
                         .orElse(null);
@@ -347,6 +345,24 @@ public class Member360Service {
                 fine.getAmount()
         );
 
+        response.setGroupMemberId(
+                fine.getGroupMember() != null
+                        ? fine.getGroupMember().getId()
+                        : null
+        );
+
+        response.setPaidAmount(
+                fine.getPaidAmount()
+        );
+
+        response.setBalance(
+                fine.getAmount().subtract(
+                        fine.getPaidAmount() != null
+                                ? fine.getPaidAmount()
+                                : BigDecimal.ZERO
+                )
+        );
+
         response.setReason(
                 fine.getReason()
         );
@@ -355,6 +371,10 @@ public class Member360Service {
                 fine.getStatus() != null
                         ? fine.getStatus().toString()
                         : null
+        );
+
+        response.setFineDate(
+                fine.getIssuedDate()
         );
 
         return response;
