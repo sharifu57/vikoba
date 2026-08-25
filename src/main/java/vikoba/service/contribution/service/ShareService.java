@@ -91,7 +91,9 @@ public class ShareService {
         GroupMember member = getMemberInGroup(request.getGroupMemberId(), groupId);
         int quantity = resolveQuantity(request.getQuantity(), request.getAmount(), product.getSharePrice());
         validateMaximum(member.getId(), groupId, quantity, product);
-        BigDecimal amount = product.getSharePrice().multiply(BigDecimal.valueOf(quantity));
+        BigDecimal amount = request.getAmount() != null && request.getAmount().compareTo(BigDecimal.ZERO) > 0
+                ? request.getAmount()
+                : product.getSharePrice().multiply(BigDecimal.valueOf(quantity));
         ShareTransaction transaction = newTransaction(member, product, ShareTransactionType.PURCHASE,
                 quantity, amount, request.getReference());
         return mapTransaction(shareTransactionRepository.save(transaction));
@@ -178,16 +180,14 @@ public class ShareService {
 
     private int resolveQuantity(Integer quantity, BigDecimal amount, BigDecimal unitPrice) {
         if (quantity != null && quantity > 0) {
-            if (amount != null && amount.compareTo(unitPrice.multiply(BigDecimal.valueOf(quantity))) != 0)
-                throw new IllegalArgumentException("Amount does not match the selected share quantity");
             return quantity;
         }
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0)
             throw new IllegalArgumentException("Enter a positive share quantity or amount");
-        BigDecimal[] result = amount.divideAndRemainder(unitPrice);
-        if (result[1].compareTo(BigDecimal.ZERO) != 0)
-            throw new IllegalArgumentException("Amount must be an exact multiple of the share price");
-        return result[0].intValueExact();
+        int calculatedQuantity = amount.divide(unitPrice, 0, RoundingMode.DOWN).intValueExact();
+        if (calculatedQuantity <= 0)
+            throw new IllegalArgumentException("The amount must purchase at least one share");
+        return calculatedQuantity;
     }
 
     private void validateMaximum(Long memberId, Long groupId, int additional, ShareProduct product) {
