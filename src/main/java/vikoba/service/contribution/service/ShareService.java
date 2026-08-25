@@ -7,6 +7,8 @@ import vikoba.service.common.enums.ShareTransactionType;
 import vikoba.service.contribution.dto.*;
 import vikoba.service.contribution.entity.ShareProduct;
 import vikoba.service.contribution.entity.ShareTransaction;
+import vikoba.service.contribution.dto.RecordPaymentRequest;
+import vikoba.service.common.enums.PaymentAllocationType;
 import vikoba.service.contribution.repository.ShareProductRepository;
 import vikoba.service.contribution.repository.ShareTransactionRepository;
 import vikoba.service.organization.entity.GroupMember;
@@ -32,6 +34,7 @@ public class ShareService {
     private final GroupMemberRepository groupMemberRepository;
     private final GroupSettingsRepository groupSettingsRepository;
     private final VikobaGroupRepository vikobaGroupRepository;
+    private final PaymentService paymentService;
 
     @Transactional(readOnly = true)
     public ShareSummaryResponse getSummary(Long groupId) {
@@ -96,7 +99,17 @@ public class ShareService {
                 : product.getSharePrice().multiply(BigDecimal.valueOf(quantity));
         ShareTransaction transaction = newTransaction(member, product, ShareTransactionType.PURCHASE,
                 quantity, amount, request.getReference());
-        return mapTransaction(shareTransactionRepository.save(transaction));
+        ShareTransaction saved = shareTransactionRepository.save(transaction);
+        RecordPaymentRequest payment = new RecordPaymentRequest();
+        payment.setGroupMemberId(member.getId());
+        payment.setAmount(amount);
+        payment.setPaymentMethod(request.getPaymentMethod());
+        payment.setReference(request.getReference());
+        payment.setAllocationType(PaymentAllocationType.SHARE_PURCHASE.name());
+        payment.setAllocationReferenceId(saved.getId());
+        payment.setDescription("Share purchase: " + quantity + " share(s)");
+        paymentService.record(groupId, payment);
+        return mapTransaction(saved);
     }
 
     @Transactional
