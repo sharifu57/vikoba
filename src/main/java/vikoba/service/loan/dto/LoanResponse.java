@@ -16,6 +16,11 @@ public class LoanResponse {
     private Long id;
 
     private Long groupMemberId;
+    private String memberName;
+    private String membershipNumber;
+    private Long loanProductId;
+    private String loanProductName;
+    private BigDecimal interestRate;
 
     private String loanNumber;
 
@@ -40,4 +45,7 @@ public class LoanResponse {
     private String purpose;
 
     private String rejectionReason;
+    private BigDecimal totalPaid;
+    private BigDecimal remainingBalance;
+    private Integer progress;
 }

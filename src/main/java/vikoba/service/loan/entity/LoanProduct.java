@@ -27,7 +27,7 @@ import java.math.BigDecimal;
 public class LoanProduct extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "group_id", nullable = false)
+    @JoinColumn(name = "group_id", nullable = true)
     private VikobaGroup group;
 
     @Column(nullable = false, length = 50)
