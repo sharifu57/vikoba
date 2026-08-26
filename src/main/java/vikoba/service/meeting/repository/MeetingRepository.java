@@ -9,6 +9,14 @@ import java.util.List;
 
 public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     @Query("""
+                    SELECT m FROM Meeting m
+                    WHERE m.group.id = :groupId
+                        AND m.meetingDate >= CURRENT_DATE
+                    ORDER BY m.meetingDate ASC, m.startTime ASC
+            """)
+    List<Meeting> findUpcomingByGroupId(@Param("groupId") Long groupId);
+
+    @Query("""
                 SELECT m FROM Meeting m
                 WHERE m.group.id = :groupId
                 ORDER BY m.meetingDate DESC, m.startTime DESC
