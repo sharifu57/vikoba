@@ -16,6 +16,12 @@ public class FineResponse {
 
     private Long groupMemberId;
 
+    private String memberName;
+    private String membershipNumber;
+    private Long fineTypeId;
+    private String fineTypeName;
+    private String reference;
+
     private BigDecimal amount;
 
     private BigDecimal paidAmount;
