@@ -10,6 +10,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.client.RestTemplate;
 import vikoba.service.auth.repository.UserRepository;
+import vikoba.service.auth.repository.UserRoleRepository;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.util.List;
 
@@ -17,16 +19,22 @@ import java.util.List;
 public class ApplicationConfiguration {
 
     private final UserRepository userRepository;
+    private final UserRoleRepository userRoleRepository;
 
-    public ApplicationConfiguration(UserRepository userRepository) {
+    public ApplicationConfiguration(UserRepository userRepository, UserRoleRepository userRoleRepository) {
         this.userRepository = userRepository;
+        this.userRoleRepository = userRoleRepository;
     }
 
     @Bean
     public UserDetailsService userDetailsService() {
         return phone -> userRepository.findByPhone(phone)
                 .map(user -> new org.springframework.security.core.userdetails.User(
-                        user.getPhone(), "", List.of()))
+                        user.getPhone(), "", userRoleRepository.findByUserPhoneWithPermissions(phone).stream()
+                                .flatMap(ur -> java.util.stream.Stream.concat(
+                                        java.util.stream.Stream.of(new SimpleGrantedAuthority("ROLE_" + ur.getRole().getName())),
+                                        ur.getRole().getPermissions().stream().map(p -> new SimpleGrantedAuthority(p.getName()))))
+                                .toList()))
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with phone: " + phone));
     }
 
