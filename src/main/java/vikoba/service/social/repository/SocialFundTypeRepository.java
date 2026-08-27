@@ -10,4 +10,6 @@ public interface SocialFundTypeRepository extends JpaRepository<SocialFundType, 
     List<SocialFundType> findByGroupIdAndActiveTrueOrderByNameAsc(Long groupId);
 
     Optional<SocialFundType> findByIdAndGroupId(Long id, Long groupId);
+
+    boolean existsByGroupIdAndCode(Long groupId, String code);
 }

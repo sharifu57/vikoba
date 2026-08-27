@@ -5,7 +5,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vikoba.service.common.response.ApiResponse;
 import vikoba.service.social.dto.*;
-import vikoba.service.social.entity.SocialFundType;
 import vikoba.service.social.service.SocialFundService;
 
 import java.math.BigDecimal;
@@ -18,8 +17,14 @@ public class SocialFundController {
     private final SocialFundService service;
 
     @GetMapping("/group/{groupId}/types")
-    public ResponseEntity<ApiResponse<List<SocialFundType>>> types(@PathVariable Long groupId) {
+    public ResponseEntity<ApiResponse<List<SocialFundTypeResponse>>> types(@PathVariable Long groupId) {
         return ResponseEntity.ok(ApiResponse.success("Jamii fund types retrieved.", service.types(groupId)));
+    }
+
+    @PostMapping("/group/{groupId}/types")
+    public ResponseEntity<ApiResponse<SocialFundTypeResponse>> createType(@PathVariable Long groupId,
+            @RequestBody SocialFundTypeInput input) {
+        return ResponseEntity.ok(ApiResponse.success("Jamii fund type created.", service.createType(groupId, input)));
     }
 
     @GetMapping("/group/{groupId}/requests")
