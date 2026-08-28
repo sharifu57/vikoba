@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import vikoba.service.notification.SmsNotificationService;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +36,7 @@ public class ShareService {
     private final GroupSettingsRepository groupSettingsRepository;
     private final VikobaGroupRepository vikobaGroupRepository;
     private final PaymentService paymentService;
+    private final SmsNotificationService smsNotificationService;
 
     @Transactional(readOnly = true)
     public ShareSummaryResponse getSummary(Long groupId) {
@@ -109,6 +111,8 @@ public class ShareService {
         payment.setAllocationReferenceId(saved.getId());
         payment.setDescription("Share purchase: " + quantity + " share(s)");
         paymentService.record(groupId, payment);
+        smsNotificationService.send(member.getMember().getPhone(), "VIKOBA360: Hongera! Ununuzi wa hisa "
+                + quantity + " umepokelewa kwa TZS " + amount.toPlainString() + ". Asante kwa kuweka akiba.");
         return mapTransaction(saved);
     }
 

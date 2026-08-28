@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.Optional;
+import vikoba.service.notification.SmsNotificationService;
 
 @Slf4j
 @Service
@@ -39,6 +40,7 @@ public class AuthService {
     private final vikoba.service.organization.repository.VikobaGroupRepository vikobaGroupRepository;
     private final vikoba.service.organization.repository.GroupSettingsRepository groupSettingsRepository;
     private final PasswordEncoder passwordEncoder;
+    private final SmsNotificationService smsNotificationService;
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int OTP_EXPIRATION_MINUTES = 5;
@@ -613,5 +615,12 @@ public class AuthService {
         otp.setIsExpired(false);
         otp.setExpiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRATION_MINUTES));
         otpRepository.save(otp);
+        boolean sent = smsNotificationService.send(
+                user.getPhone(),
+                "Karibu VIKOBA360! Namba yako ya uthibitisho (OTP) ni "
+                        + otp.getCode() + ". Itatumika kwa dakika 5 tu. Usimshirikishe mtu yeyote.");
+        if (!sent) {
+            log.warn("OTP generated but SMS delivery failed for {}", user.getPhone());
+        }
     }
 }

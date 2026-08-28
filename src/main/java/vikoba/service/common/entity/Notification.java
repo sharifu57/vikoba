@@ -51,4 +51,23 @@ public class Notification extends BaseEntity{
 
     @Column(name = "read_at")
     private LocalDateTime readAt;
+
+    /** Delivery channel, for example IN_APP or SMS. */
+    @Column(length = 20)
+    @Builder.Default
+    private String channel = "IN_APP";
+
+    /** PENDING, SENT or FAILED. */
+    @Column(name = "delivery_status", length = 20)
+    @Builder.Default
+    private String deliveryStatus = "SENT";
+
+    @Column(name = "recipient_phone", length = 30)
+    private String recipientPhone;
+
+    @Column(name = "provider_response", columnDefinition = "TEXT")
+    private String providerResponse;
+
+    @Column(name = "sent_at")
+    private LocalDateTime sentAt;
 }
