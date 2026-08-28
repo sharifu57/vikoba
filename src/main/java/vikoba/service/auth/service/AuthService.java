@@ -1,10 +1,15 @@
 package vikoba.service.auth.service;
 
-import lombok.AllArgsConstructor;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.stereotype.Service;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
-import vikoba.service.config.JwtService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import lombok.AllArgsConstructor;
 import vikoba.service.auth.dto.AuthLookUpResponse;
 import vikoba.service.auth.dto.LoginRequest;
 import vikoba.service.auth.dto.RegisterRequest;
@@ -18,11 +23,7 @@ import vikoba.service.auth.repository.UserRepository;
 import vikoba.service.common.enums.AuthStatus;
 import vikoba.service.common.enums.UserStatus;
 import vikoba.service.common.response.AuthResponse;
-
-import java.security.SecureRandom;
-import java.time.LocalDateTime;
-import java.util.UUID;
-import java.util.Optional;
+import vikoba.service.config.JwtService;
 
 @Service
 @AllArgsConstructor
@@ -32,7 +33,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
 
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final SecureRandom RANDOM = new SecureRandom(); 
     private static final int OTP_EXPIRATION_MINUTES = 5;
 
     public AuthResponse<AuthLookUpResponse> lookUp(LoginRequest request) {
