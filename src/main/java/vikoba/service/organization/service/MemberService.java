@@ -52,10 +52,6 @@ public class MemberService {
         public ApiResponse<MemberResponse> addMemberToGroup(
                         AddMemberRequest request) {
 
-                // ============================================================
-                // 1. VALIDATE REQUEST
-                // ============================================================
-
                 if (request == null) {
                         throw new IllegalArgumentException(
                                         "Member details are required.");
@@ -274,9 +270,9 @@ public class MemberService {
                 // Invitation delivery is best-effort: a Pago outage must not roll back
                 // a valid member/group registration. The account is OTP-login ready.
                 smsNotificationService.send(phone,
-                                "You have been invited to join " + group.getName() + " on VIKOBA360 as "
-                                                + selectedRole.name().replace('_', ' ')
-                                                + ". Use your phone number to sign in.");
+                                "Karibu VIKOBA360! Umealikwa kujiunga na kikundi " + group.getName()
+                                                + " kama " + selectedRole.name().replace('_', ' ')
+                                                + ". Tumia namba yako ya simu kuingia.");
 
                 // ============================================================
                 // 8. RETURN RESPONSE

@@ -18,6 +18,7 @@ import vikoba.service.organization.repository.*;
 import java.math.*;
 import java.time.*;
 import java.util.*;
+import vikoba.service.notification.SmsNotificationService;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +34,7 @@ public class LoanWorkflowService {
     private final FineRepository fines;
     private final FineTypeRepository fineTypes;
     private final GroupSettingsRepository groupSettingsRepository;
+    private final SmsNotificationService smsNotificationService;
 
     @Transactional(readOnly = true)
     public List<LoanResponse> list(Long groupId) {
@@ -230,6 +232,9 @@ public class LoanWorkflowService {
         l.setDisbursementDate(LocalDate.now());
         l.setMaturityDate(LocalDate.now().plusMonths(l.getDurationMonths()));
         createSchedule(l);
+        smsNotificationService.send(l.getGroupMember().getMember().getPhone(), "VIKOBA360: Hongera! Mkopo "
+                + l.getLoanNumber() + " umetolewa kwa TZS " + l.getPrincipalAmount().toPlainString()
+                + ". Angalia ratiba ya marejesho kwenye akaunti yako.");
         return response(l);
     }
 

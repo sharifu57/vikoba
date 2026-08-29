@@ -13,4 +13,7 @@ public class SystemEnv {
 
     @Value("${sms.sender.id}")
     public String senderId;
+
+    @Value("${sms.dispatch.url}")
+    public String smsUrl;
 }

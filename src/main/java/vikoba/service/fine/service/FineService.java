@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import vikoba.service.notification.SmsNotificationService;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +24,7 @@ public class FineService {
     private final FineTypeRepository types;
     private final GroupMemberRepository members;
     private final VikobaGroupRepository groups;
+    private final SmsNotificationService smsNotificationService;
 
     @Transactional(readOnly = true)
     public List<FineResponse> list(Long groupId) {
@@ -45,6 +47,9 @@ public class FineService {
                 .amount(amount).paidAmount(BigDecimal.ZERO)
                 .issuedDate(input.getIssuedDate() == null ? LocalDate.now() : input.getIssuedDate())
                 .reason(input.getReason()).status(FineStatus.UNPAID).build());
+        smsNotificationService.send(member.getMember().getPhone(), "VIKOBA360: Taarifa ya faini. "
+                + "Umewekewa faini ya TZS " + amount.toPlainString() + " (" + type.getName()
+                + "). Tafadhali wasiliana na kikundi kwa maelezo.");
         return toResponse(fine);
     }
 
@@ -68,7 +73,14 @@ public class FineService {
         }
         if (input.getReason() != null)
             fine.setReason(input.getReason());
-        return toResponse(fines.save(fine));
+        Fine saved = fines.save(fine);
+        if (input.getPaymentAmount() != null) {
+            smsNotificationService.send(fine.getGroupMember().getMember().getPhone(),
+                    "VIKOBA360: Malipo ya faini ya TZS " + input.getPaymentAmount().toPlainString()
+                            + " yamepokelewa. Salio ni TZS "
+                            + fine.getAmount().subtract(fine.getPaidAmount()).toPlainString() + ".");
+        }
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
