@@ -7,4 +7,5 @@ import java.util.Optional;
 
 public interface GroupSettingsRepository extends JpaRepository<GroupSettings, Long> {
     Optional<GroupSettings> findByGroupId(Long groupId);
+
 }

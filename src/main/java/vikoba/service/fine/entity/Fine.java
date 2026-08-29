@@ -17,41 +17,32 @@ import java.time.LocalDate;
 @AllArgsConstructor
 @Builder
 public class Fine extends BaseEntity {
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "group_member_id", nullable = false)
-    private GroupMember groupMember;
+        @ManyToOne(fetch = FetchType.LAZY, optional = false)
+        @JoinColumn(name = "group_member_id", nullable = false)
+        private GroupMember groupMember;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "fine_type_id", nullable = false)
-    private FineType fineType;
+        @ManyToOne(fetch = FetchType.LAZY, optional = false)
+        @JoinColumn(name = "fine_type_id", nullable = false)
+        private FineType fineType;
 
-    @Column(nullable = false, unique = true, length = 100)
-    private String reference;
+        @Column(nullable = false, unique = true, length = 100)
+        private String reference;
 
-    @Column(
-            precision = 19,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal amount;
+        @Column(precision = 19, scale = 2, nullable = false)
+        private BigDecimal amount;
 
-    @Column(
-            name = "paid_amount",
-            precision = 19,
-            scale = 2,
-            nullable = false
-    )
-    @Builder.Default
-    private BigDecimal paidAmount = BigDecimal.ZERO;
+        @Column(name = "paid_amount", precision = 19, scale = 2, nullable = false)
+        @Builder.Default
+        private BigDecimal paidAmount = BigDecimal.ZERO;
 
-    @Column(name = "issued_date", nullable = false)
-    private LocalDate issuedDate;
+        @Column(name = "issued_date", nullable = false)
+        private LocalDate issuedDate;
 
-    @Column(columnDefinition = "TEXT")
-    private String reason;
+        @Column(columnDefinition = "TEXT")
+        private String reason;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    @Builder.Default
-    private FineStatus status = FineStatus.UNPAID;
+        @Enumerated(EnumType.STRING)
+        @Column(nullable = false, length = 20)
+        @Builder.Default
+        private FineStatus status = FineStatus.UNPAID;
 }

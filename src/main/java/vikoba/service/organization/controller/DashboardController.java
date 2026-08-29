@@ -5,9 +5,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import vikoba.service.common.response.ApiResponse;
 import vikoba.service.organization.dto.DashboardStatistic;
+import vikoba.service.organization.dto.DashboardOverviewResponse;
 import vikoba.service.organization.service.DashboardService;
 
 @RestController
@@ -16,6 +18,18 @@ import vikoba.service.organization.service.DashboardService;
 public class DashboardController {
 
     private final DashboardService dashboardService;
+
+    @GetMapping("/dashboard/group/{groupId}")
+    public ResponseEntity<ApiResponse<DashboardOverviewResponse>> getOverview(@PathVariable Long groupId) {
+        try {
+            return ResponseEntity.ok(ApiResponse.success("Dashboard overview retrieved.",
+                    dashboardService.getOverview(groupId)));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to fetch dashboard overview."));
+        }
+    }
 
     @GetMapping("/dashboard")
     public ResponseEntity<ApiResponse<DashboardStatistic>> getDashboard(@RequestParam("groupId") Long groupId) {
