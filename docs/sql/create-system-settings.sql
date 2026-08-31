@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
 CREATE INDEX IF NOT EXISTS idx_system_setting_key
     ON public.system_settings (setting_key);
 
+
+ALTER TABLE public.system_settings
+ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP;
+
 INSERT INTO public.system_settings
     (setting_key, setting_value, value_type, description, is_public)
 VALUES
