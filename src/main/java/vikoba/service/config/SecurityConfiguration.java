@@ -16,10 +16,13 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfiguration {
+    @Value("${app.cors.allowed-origins:http://localhost:3000}")
+    private String allowedOrigins;
     private final AuthenticationProvider authenticationProvider;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
@@ -42,9 +45,7 @@ public class SecurityConfiguration {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/lookup", "/api/auth/register", "/api/auth/verify-otp",
-                                "/api/auth/refresh", "/api/auth/assign-permissions", "/api/auth/logout",
-                                "/api/auth/resend-otp",
-                                "/api/auth/roles", "/api/auth/staff-invite")
+                                "/api/auth/refresh", "/api/auth/resend-otp")
                         .permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
@@ -63,9 +64,7 @@ public class SecurityConfiguration {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(
-                List.of("http://localhost:3000", "http://localhost:3001", "https://uat.tcbbank.co.tz",
-                        "https://uat.tcbbank.co.tz:8443"));
+        configuration.setAllowedOrigins(List.of(allowedOrigins.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration
                 .setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
