@@ -1,11 +1,26 @@
 package vikoba.service.auth.service;
 
-import lombok.AllArgsConstructor;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.stereotype.Service;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
-import vikoba.service.auth.dto.*;
-import vikoba.service.config.JwtService;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import vikoba.service.auth.dto.AuthLookUpResponse;
+import vikoba.service.auth.dto.LoginRequest;
+import vikoba.service.auth.dto.RegisterRequest;
+import vikoba.service.auth.dto.ResendOtpRequest;
+import vikoba.service.auth.dto.UserGroupResponse;
+import vikoba.service.auth.dto.UserSessionResponse;
+import vikoba.service.auth.dto.UserSessionWithGroupResponse;
+import vikoba.service.auth.dto.VerifyOtpRequest;
 import vikoba.service.auth.entity.OTP;
 import vikoba.service.auth.entity.User;
 import vikoba.service.auth.repository.OTPRepository;
@@ -13,20 +28,17 @@ import vikoba.service.auth.repository.UserRepository;
 import vikoba.service.common.enums.AuthStatus;
 import vikoba.service.common.enums.UserStatus;
 import vikoba.service.common.response.AuthResponse;
+import vikoba.service.config.JwtService;
+import vikoba.service.notification.SmsNotificationService;
 import vikoba.service.organization.dto.GroupSettingsRequest;
 import vikoba.service.organization.dto.VikobaGroupCreateResponse;
-import vikoba.service.organization.entity.*;
+import vikoba.service.organization.entity.GroupMember;
+import vikoba.service.organization.entity.GroupSettings;
+import vikoba.service.organization.entity.Member;
+import vikoba.service.organization.entity.Organization;
+import vikoba.service.organization.entity.VikobaGroup;
 import vikoba.service.organization.repository.GroupMemberRepository;
 import vikoba.service.organization.repository.MemberRepository;
-import lombok.extern.slf4j.Slf4j;
-
-import java.security.SecureRandom;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.Optional;
-import vikoba.service.notification.SmsNotificationService;
 
 @Slf4j
 @Service
@@ -523,6 +535,8 @@ public class AuthService {
                             settings.getLatePaymentFine()
                     );
                 }
+
+            
 
                 // ====================================================
                 // SETTINGS CONFIGURED
