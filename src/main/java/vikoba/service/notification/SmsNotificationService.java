@@ -12,6 +12,7 @@ import vikoba.service.common.entity.Notification;
 import vikoba.service.common.enums.NotificationType;
 import vikoba.service.common.repository.NotificationRepository;
 import vikoba.service.config.SystemEnv;
+import vikoba.service.common.service.SystemSettingService;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -25,6 +26,7 @@ public class SmsNotificationService {
     private final SystemEnv dbEnv;
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
+    private final SystemSettingService systemSettingService;
 
 
     public boolean send(String customerPhone, String message) {
@@ -76,7 +78,7 @@ public class SmsNotificationService {
             payload.put(
                     "recipients",
                     Collections.singletonList(recipient));
-            payload.put("senderIdentity", dbEnv.senderId);
+            payload.put("senderIdentity", systemSettingService.get("sms.sender.id", dbEnv.senderId));
             payload.put("callbackUrl", "");
 
             HttpHeaders headers = new HttpHeaders();
@@ -85,12 +87,12 @@ public class SmsNotificationService {
             headers.set("apiKey", dbEnv.smsApiKey);
 
             // Keep if the API requires it as a header too
-            headers.set("senderIdentity", dbEnv.senderId);
+            headers.set("senderIdentity", systemSettingService.get("sms.sender.id", dbEnv.senderId));
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
 
             ResponseEntity<Map> response = restTemplate.exchange(
-                    dbEnv.smsUrl,
+                    systemSettingService.get("sms.dispatch.url", dbEnv.smsUrl),
                     HttpMethod.POST,
                     request,
                     Map.class);
