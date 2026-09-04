@@ -20,11 +20,59 @@ ALTER TABLE public.system_settings
 ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP;
 
 INSERT INTO public.system_settings
-    (setting_key, setting_value, value_type, description, is_public)
+(
+    setting_key,
+    setting_value,
+    value_type,
+    description,
+    is_public,
+    created_at,
+    updated_at
+)
 VALUES
-    ('app.default.language', 'sw', 'STRING', 'Default application language', TRUE),
-    ('app.currency', 'TZS', 'STRING', 'Default currency', TRUE),
-    ('app.maintenance.mode', 'false', 'BOOLEAN', 'Enable maintenance mode', FALSE),
-    ('app.max.upload.size.mb', '20', 'NUMBER', 'Maximum upload size in megabytes', FALSE),
-    ('sms.sender.id', 'Pago', 'STRING', 'SMS sender name', FALSE)
+(
+    'app.default.language',
+    'sw',
+    'STRING',
+    'Default application language',
+    TRUE,
+    NOW(),
+    NOW()
+),
+(
+    'app.currency',
+    'TZS',
+    'STRING',
+    'Default currency',
+    TRUE,
+    NOW(),
+    NOW()
+),
+(
+    'app.maintenance.mode',
+    'false',
+    'BOOLEAN',
+    'Enable maintenance mode',
+    FALSE,
+    NOW(),
+    NOW()
+),
+(
+    'app.max.upload.size.mb',
+    '20',
+    'NUMBER',
+    'Maximum upload size in megabytes',
+    FALSE,
+    NOW(),
+    NOW()
+),
+(
+    'sms.sender.id',
+    'Pago',
+    'STRING',
+    'SMS sender name',
+    FALSE,
+    NOW(),
+    NOW()
+)
 ON CONFLICT (setting_key) DO NOTHING;
