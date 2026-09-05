@@ -86,8 +86,73 @@ public class FineService {
     @Transactional(readOnly = true)
     public List<FineTypeResponse> types(Long groupId) {
         requireGroup(groupId);
-        return types.findAll().stream().filter(t -> t.getGroup().getId().equals(groupId) && t.isActive())
-                .map(this::typeResponse).toList();
+        return types.findByGroupIdOrderByNameAsc(groupId).stream().filter(FineType::isActive).map(this::typeResponse)
+                .toList();
+    }
+
+    @Transactional
+    public FineTypeResponse createType(Long groupId, FineTypeRequest request) {
+        VikobaGroup group = requireGroup(groupId);
+        String code = normalizeCode(request.getCode(), request.getName(), "FINE");
+        String name = requiredText(request.getName(), "Fine type name");
+        BigDecimal amount = request.getDefaultAmount() == null ? BigDecimal.ZERO : request.getDefaultAmount();
+        if (amount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Fine amount cannot be negative.");
+        }
+        return types.findByGroupIdAndCode(groupId, code)
+                .map(existing -> {
+                    existing.setName(name);
+                    existing.setDefaultAmount(amount);
+                    existing.setDescription(request.getDescription());
+                    existing.setActive(request.getActive() == null || request.getActive());
+                    return typeResponse(types.save(existing));
+                })
+                .orElseGet(() -> typeResponse(types.save(FineType.builder()
+                        .group(group)
+                        .code(code)
+                        .name(name)
+                        .defaultAmount(amount)
+                        .description(request.getDescription())
+                        .active(request.getActive() == null || request.getActive())
+                        .build())));
+    }
+
+    @Transactional
+    public FineTypeResponse updateType(Long groupId, Long id, FineTypeRequest request) {
+        FineType type = types.findById(id).orElseThrow(() -> new IllegalArgumentException("Fine type not found."));
+        if (!type.getGroup().getId().equals(groupId)) {
+            throw new IllegalArgumentException("Fine type does not belong to this group.");
+        }
+        String name = requiredText(request.getName(), "Fine type name");
+        BigDecimal amount = request.getDefaultAmount() == null ? type.getDefaultAmount() : request.getDefaultAmount();
+        if (amount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Fine amount cannot be negative.");
+        }
+        if (request.getCode() != null && !request.getCode().isBlank()) {
+            String nextCode = normalizeCode(request.getCode(), name, type.getCode());
+            if (!nextCode.equals(type.getCode())) {
+                if (types.findByGroupIdAndCode(groupId, nextCode).filter(existing -> !existing.getId().equals(id))
+                        .isPresent()) {
+                    throw new IllegalArgumentException("A fine type with this code already exists in this group.");
+                }
+                type.setCode(nextCode);
+            }
+        }
+        type.setName(name);
+        type.setDefaultAmount(amount);
+        type.setDescription(request.getDescription());
+        type.setActive(request.getActive() == null || request.getActive());
+        return typeResponse(types.save(type));
+    }
+
+    @Transactional
+    public void deleteType(Long groupId, Long id) {
+        FineType type = types.findById(id).orElseThrow(() -> new IllegalArgumentException("Fine type not found."));
+        if (!type.getGroup().getId().equals(groupId)) {
+            throw new IllegalArgumentException("Fine type does not belong to this group.");
+        }
+        type.setActive(false);
+        types.save(type);
     }
 
     private FineType resolveType(VikobaGroup group, FineInput input) {
@@ -111,6 +176,23 @@ public class FineService {
         if (v == null || v.signum() <= 0)
             throw new IllegalArgumentException("Amount must be greater than zero.");
         return v;
+    }
+
+    private String normalizeCode(String rawCode, String name, String fallback) {
+        String candidate = rawCode == null || rawCode.isBlank() ? name : rawCode;
+        String normalized = candidate.trim();
+        if (normalized.isBlank()) {
+            normalized = fallback == null ? "OTHER" : fallback;
+        }
+        normalized = normalized.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_");
+        return normalized.isBlank() ? "OTHER" : normalized;
+    }
+
+    private String requiredText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " is required.");
+        }
+        return value.trim();
     }
 
     private FineResponse toResponse(Fine f) {
