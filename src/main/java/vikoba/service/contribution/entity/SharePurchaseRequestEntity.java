@@ -48,7 +48,6 @@ public class SharePurchaseRequestEntity {
     @Column(length = 120)
     private String proofContentType;
 
-    @Lob
     @Column(columnDefinition = "bytea")
     private byte[] proofFile;
 
