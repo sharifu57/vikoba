@@ -4,8 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import vikoba.service.common.enums.ShareTransactionType;
 import vikoba.service.contribution.dto.SharePurchaseRequestResponse;
 import vikoba.service.contribution.entity.ShareProduct;
@@ -17,9 +15,7 @@ import vikoba.service.organization.entity.GroupMember;
 import vikoba.service.organization.repository.GroupMemberRepository;
 import vikoba.service.organization.repository.GroupSettingsRepository;
 import vikoba.service.organization.repository.VikobaGroupRepository;
-import vikoba.service.organization.repository.MemberRoleRepository;
-import vikoba.service.auth.repository.UserRepository;
-import vikoba.service.common.enums.GroupRole;
+import vikoba.service.organization.service.GroupAuthorizationService;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -35,14 +31,14 @@ public class SharePurchaseRequestService {
     private final GroupMemberRepository groupMemberRepository;
     private final GroupSettingsRepository groupSettingsRepository;
     private final VikobaGroupRepository vikobaGroupRepository;
-    private final MemberRoleRepository memberRoleRepository;
-    private final UserRepository userRepository;
+    private final GroupAuthorizationService authorizationService;
     private final ShareService shareService;
 
     @Transactional
     public SharePurchaseRequestResponse submit(Long groupId, Long groupMemberId, BigDecimal amount,
             Integer quantity, String paymentMethod, String paymentReference, String proofText,
             MultipartFile proofFile) {
+        authorizationService.requireSelfOrPermission(groupId, groupMemberId, "SHARE_MANAGE");
         GroupMember member = groupMemberRepository.findById(groupMemberId)
                 .orElseThrow(() -> new IllegalArgumentException("Group member not found"));
         if (!member.getGroup().getId().equals(groupId))
@@ -137,22 +133,7 @@ public class SharePurchaseRequestService {
     }
 
     private void assertReviewer(Long groupId) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated())
-            throw new IllegalArgumentException("Authentication is required");
-        var user = userRepository.findByPhone(authentication.getName())
-                .orElseThrow(() -> new IllegalArgumentException("Authenticated user was not found"));
-        if (user.getMember() == null)
-            throw new IllegalArgumentException("User is not a group member");
-        var groupMember = groupMemberRepository.findByGroupIdAndMemberId(groupId, user.getMember().getId())
-                .orElseThrow(() -> new IllegalArgumentException("User is not a member of this group"));
-        boolean allowed = memberRoleRepository.findByGroupMemberIdAndActiveTrue(groupMember.getId()).stream()
-                .map(role -> role.getRole())
-                .anyMatch(role -> role == GroupRole.GROUP_ADMIN || role == GroupRole.TREASURER
-                        || role == GroupRole.ACCOUNTANT);
-        if (!allowed)
-            throw new IllegalArgumentException(
-                    "Only a group administrator, treasurer, or accountant can review payment proofs");
+        authorizationService.requireWorkflowAction(groupId, "SHARE_PURCHASE_PROOF", "SHARE_PURCHASE_APPROVE");
     }
 
     private SharePurchaseRequestEntity findInGroup(Long groupId, Long requestId) {

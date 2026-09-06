@@ -19,6 +19,7 @@ import vikoba.service.organization.entity.*;
 import vikoba.service.organization.repository.GroupMemberRepository;
 import vikoba.service.organization.repository.MemberRepository;
 import vikoba.service.organization.repository.MemberRoleRepository;
+import vikoba.service.organization.repository.MemberPermissionRepository;
 import vikoba.service.auth.repository.RoleRepository;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.Optional;
+import java.util.LinkedHashSet;
 import vikoba.service.notification.SmsNotificationService;
 
 @Slf4j
@@ -44,6 +46,7 @@ public class AuthService {
         private final SmsNotificationService smsNotificationService;
         private final MemberRoleRepository memberRoleRepository;
         private final RoleRepository roleRepository;
+        private final MemberPermissionRepository memberPermissionRepository;
 
         private static final SecureRandom RANDOM = new SecureRandom();
         private static final int OTP_EXPIRATION_MINUTES = 5;
@@ -494,15 +497,20 @@ public class AuthService {
 
                                 List<MemberRole> activeRoles = memberRoleRepository
                                                 .findByGroupMemberIdAndActiveTrue(membership.getId());
-                                String groupRole = activeRoles.isEmpty()
-                                                ? "MEMBER"
-                                                : activeRoles.get(0).getRole().name();
-                                List<String> permissions = roleRepository.findByNameWithPermissions(groupRole)
-                                                .map(role -> role.getPermissions().stream()
-                                                                .map(permission -> permission.getName())
-                                                                .sorted()
-                                                                .toList())
-                                                .orElse(List.of());
+                                List<String> groupRoles = activeRoles.stream()
+                                                .map(role -> role.getRole().name()).distinct().toList();
+                                String groupRole = primaryGroupRole(groupRoles);
+                                LinkedHashSet<String> permissionSet = new LinkedHashSet<>();
+                                if (groupRoles.contains("GROUP_ADMIN")) {
+                                        roleRepository.findAll().forEach(role -> role.getPermissions()
+                                                        .forEach(permission -> permissionSet.add(permission.getName())));
+                                } else {
+                                        groupRoles.forEach(roleName -> roleRepository.findByNameWithPermissions(roleName)
+                                                        .ifPresent(role -> role.getPermissions().forEach(permission -> permissionSet.add(permission.getName()))));
+                                        memberPermissionRepository.findByGroupMemberId(membership.getId())
+                                                        .forEach(grant -> permissionSet.add(grant.getPermission().getName()));
+                                }
+                                List<String> permissions = permissionSet.stream().sorted().toList();
 
                                 // ====================================================
                                 // ADD USER GROUP
@@ -514,6 +522,7 @@ public class AuthService {
                                                                 settingsResponse,
                                                                 settingsConfigured,
                                                                 groupRole,
+                                                                groupRoles,
                                                                 permissions));
                         }
                 }
@@ -560,6 +569,12 @@ public class AuthService {
                                                 jwtService.getExpirationTime()));
 
                 return response;
+        }
+
+        private String primaryGroupRole(List<String> roles) {
+                List<String> order = List.of("GROUP_ADMIN", "GROUP_CHAIRMAN", "ACCOUNTANT", "TREASURER",
+                                "SECRETARY", "LOAN_OFFICER", "AUDITOR", "MEMBER");
+                return order.stream().filter(roles::contains).findFirst().orElse("MEMBER");
         }
 
         private void createLoginOtp(User user) {

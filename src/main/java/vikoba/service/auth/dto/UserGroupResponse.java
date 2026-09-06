@@ -18,5 +18,6 @@ public class UserGroupResponse {
     private GroupSettingsRequest settings;
     private boolean settingsConfigured;
     private String role;
+    private List<String> roles;
     private List<String> permissions;
 }

@@ -112,7 +112,7 @@ public class VikobaService {
 
                 memberRoleRepository.save(vikoba.service.organization.entity.MemberRole.builder()
                         .groupMember(groupMember)
-                        .role(vikoba.service.common.enums.GroupRole.GROUP_ADMIN)
+                        .role(vikoba.service.common.enums.GroupRole.GROUP_CHAIRMAN)
                         .startDate(java.time.LocalDate.now())
                         .active(true)
                         .build());
@@ -602,7 +602,7 @@ public class VikobaService {
         if (user.getMember() == null || !memberRoleRepository
                 .existsByGroupMemberMemberIdAndGroupMemberGroupOrganizationIdAndGroupMemberStatusAndRoleAndActiveTrue(
                         user.getMember().getId(), organizationId, MembershipStatus.ACTIVE,
-                        GroupRole.GROUP_ADMIN)) {
+                        GroupRole.GROUP_CHAIRMAN)) {
             throw new IllegalStateException("Only an organization group administrator can manage group settings.");
         }
     }
