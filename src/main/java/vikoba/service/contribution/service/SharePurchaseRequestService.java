@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import vikoba.service.common.enums.ShareTransactionType;
 import vikoba.service.contribution.dto.SharePurchaseRequestResponse;
 import vikoba.service.contribution.entity.ShareProduct;
@@ -15,6 +17,9 @@ import vikoba.service.organization.entity.GroupMember;
 import vikoba.service.organization.repository.GroupMemberRepository;
 import vikoba.service.organization.repository.GroupSettingsRepository;
 import vikoba.service.organization.repository.VikobaGroupRepository;
+import vikoba.service.organization.repository.MemberRoleRepository;
+import vikoba.service.auth.repository.UserRepository;
+import vikoba.service.common.enums.GroupRole;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -30,6 +35,8 @@ public class SharePurchaseRequestService {
     private final GroupMemberRepository groupMemberRepository;
     private final GroupSettingsRepository groupSettingsRepository;
     private final VikobaGroupRepository vikobaGroupRepository;
+    private final MemberRoleRepository memberRoleRepository;
+    private final UserRepository userRepository;
     private final ShareService shareService;
 
     @Transactional
@@ -78,6 +85,7 @@ public class SharePurchaseRequestService {
 
     @Transactional(readOnly = true)
     public List<SharePurchaseRequestResponse> list(Long groupId, SharePurchaseRequestStatus status) {
+        assertReviewer(groupId);
         List<SharePurchaseRequestEntity> requests = status == null
                 ? requestRepository.findByGroupMemberGroupIdOrderBySubmittedAtDesc(groupId)
                 : requestRepository.findByGroupMemberGroupIdAndStatusOrderBySubmittedAtDesc(groupId, status);
@@ -86,6 +94,7 @@ public class SharePurchaseRequestService {
 
     @Transactional
     public SharePurchaseRequestResponse approve(Long groupId, Long requestId) {
+        assertReviewer(groupId);
         SharePurchaseRequestEntity request = findInGroup(groupId, requestId);
         if (request.getStatus() != SharePurchaseRequestStatus.PENDING)
             throw new IllegalArgumentException("Only pending requests can be approved");
@@ -103,6 +112,7 @@ public class SharePurchaseRequestService {
 
     @Transactional
     public SharePurchaseRequestResponse reject(Long groupId, Long requestId, String reason) {
+        assertReviewer(groupId);
         SharePurchaseRequestEntity request = findInGroup(groupId, requestId);
         if (request.getStatus() != SharePurchaseRequestStatus.PENDING)
             throw new IllegalArgumentException("Only pending requests can be rejected");
@@ -114,6 +124,7 @@ public class SharePurchaseRequestService {
 
     @Transactional(readOnly = true)
     public byte[] proof(Long groupId, Long requestId) {
+        assertReviewer(groupId);
         SharePurchaseRequestEntity request = findInGroup(groupId, requestId);
         if (request.getProofFile() == null)
             throw new IllegalArgumentException("Proof file not found");
@@ -121,7 +132,27 @@ public class SharePurchaseRequestService {
     }
 
     public String proofContentType(Long groupId, Long requestId) {
+        assertReviewer(groupId);
         return findInGroup(groupId, requestId).getProofContentType();
+    }
+
+    private void assertReviewer(Long groupId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated())
+            throw new IllegalArgumentException("Authentication is required");
+        var user = userRepository.findByPhone(authentication.getName())
+                .orElseThrow(() -> new IllegalArgumentException("Authenticated user was not found"));
+        if (user.getMember() == null)
+            throw new IllegalArgumentException("User is not a group member");
+        var groupMember = groupMemberRepository.findByGroupIdAndMemberId(groupId, user.getMember().getId())
+                .orElseThrow(() -> new IllegalArgumentException("User is not a member of this group"));
+        boolean allowed = memberRoleRepository.findByGroupMemberIdAndActiveTrue(groupMember.getId()).stream()
+                .map(role -> role.getRole())
+                .anyMatch(role -> role == GroupRole.GROUP_ADMIN || role == GroupRole.TREASURER
+                        || role == GroupRole.ACCOUNTANT);
+        if (!allowed)
+            throw new IllegalArgumentException(
+                    "Only a group administrator, treasurer, or accountant can review payment proofs");
     }
 
     private SharePurchaseRequestEntity findInGroup(Long groupId, Long requestId) {

@@ -36,7 +36,7 @@ public class SharePurchaseRequestController {
     }
 
     @GetMapping("/group/{groupId}")
-    @PreAuthorize("hasAnyRole('GROUP_ADMIN', 'TREASURER', 'ACCOUNTANT', 'ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<List<SharePurchaseRequestResponse>>> list(
             @PathVariable Long groupId,
             @RequestParam(required = false) SharePurchaseRequestStatus status) {
@@ -45,7 +45,7 @@ public class SharePurchaseRequestController {
     }
 
     @PostMapping("/group/{groupId}/{requestId}/approve")
-    @PreAuthorize("hasAnyRole('GROUP_ADMIN', 'TREASURER', 'ACCOUNTANT', 'ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<SharePurchaseRequestResponse>> approve(@PathVariable Long groupId,
             @PathVariable Long requestId) {
         return ResponseEntity.ok(ApiResponse.success("Share purchase approved and added to the member.",
@@ -53,7 +53,7 @@ public class SharePurchaseRequestController {
     }
 
     @PostMapping("/group/{groupId}/{requestId}/reject")
-    @PreAuthorize("hasAnyRole('GROUP_ADMIN', 'TREASURER', 'ACCOUNTANT', 'ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<SharePurchaseRequestResponse>> reject(@PathVariable Long groupId,
             @PathVariable Long requestId, @RequestParam(required = false) String reason) {
         return ResponseEntity.ok(ApiResponse.success("Share purchase request rejected.",
@@ -61,7 +61,7 @@ public class SharePurchaseRequestController {
     }
 
     @GetMapping("/group/{groupId}/{requestId}/proof")
-    @PreAuthorize("hasAnyRole('GROUP_ADMIN', 'TREASURER', 'ACCOUNTANT', 'ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<byte[]> proof(@PathVariable Long groupId, @PathVariable Long requestId) {
         byte[] proof = service.proof(groupId, requestId);
         String contentType = service.proofContentType(groupId, requestId);
