@@ -95,7 +95,6 @@ public class ShareService {
         ShareProduct product = getOrCreateProduct(groupId);
         GroupMember member = getMemberInGroup(request.getGroupMemberId(), groupId);
         int quantity = resolveQuantity(request.getQuantity(), request.getAmount(), product.getSharePrice());
-        validateMaximum(member.getId(), groupId, quantity, product);
         BigDecimal amount = request.getAmount() != null && request.getAmount().compareTo(BigDecimal.ZERO) > 0
                 ? request.getAmount()
                 : product.getSharePrice().multiply(BigDecimal.valueOf(quantity));
@@ -106,7 +105,7 @@ public class ShareService {
         payment.setGroupMemberId(member.getId());
         payment.setAmount(amount);
         payment.setPaymentMethod(request.getPaymentMethod());
-        payment.setReference(request.getReference());
+        payment.setReference(saved.getReference());
         payment.setAllocationType(PaymentAllocationType.SHARE_PURCHASE.name());
         payment.setAllocationReferenceId(saved.getId());
         payment.setDescription("Share purchase: " + quantity + " share(s)");
@@ -127,7 +126,6 @@ public class ShareService {
         int owned = calculateBalance(shareTransactionRepository.findLedgerByGroupId(groupId), from.getId());
         if (owned < request.getQuantity())
             throw new IllegalArgumentException("Member does not own enough shares");
-        validateMaximum(to.getId(), groupId, request.getQuantity(), product);
         BigDecimal amount = product.getSharePrice().multiply(BigDecimal.valueOf(request.getQuantity()));
         String reference = reference(request.getReference());
         shareTransactionRepository.save(newTransaction(from, product, ShareTransactionType.TRANSFER_OUT,
@@ -176,7 +174,7 @@ public class ShareService {
                                 .orElseThrow(() -> new IllegalArgumentException("Group not found")))
                         .code(PRODUCT_CODE).name("Group Share").active(true).build());
         product.setSharePrice(settings.getSharePrice());
-        product.setMaximumShares(settings.getMaximumSharesPerMember());
+        product.setMaximumShares(null);
         return shareProductRepository.save(product);
     }
 
@@ -207,14 +205,6 @@ public class ShareService {
         return calculatedQuantity;
     }
 
-    private void validateMaximum(Long memberId, Long groupId, int additional, ShareProduct product) {
-        if (product.getMaximumShares() != null) {
-            int owned = calculateBalance(shareTransactionRepository.findLedgerByGroupId(groupId), memberId);
-            if (owned + additional > product.getMaximumShares())
-                throw new IllegalArgumentException("This purchase exceeds the member share limit");
-        }
-    }
-
     private void requirePositiveQuantity(Integer quantity) {
         if (quantity == null || quantity <= 0)
             throw new IllegalArgumentException("quantity must be greater than zero");
@@ -228,7 +218,10 @@ public class ShareService {
     }
 
     private String reference(String requested) {
-        return requested == null || requested.isBlank() ? "SHARE-" + UUID.randomUUID() : requested.trim();
+        if (requested == null || requested.isBlank()) {
+            return "SHARE-" + UUID.randomUUID();
+        }
+        return requested.trim() + "-" + UUID.randomUUID();
     }
 
     private Map<Long, Integer> calculateBalances(List<ShareTransaction> ledger) {
