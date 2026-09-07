@@ -55,6 +55,8 @@ public class MeetingService {
                 .startTime(request.getStartTime() == null ? LocalTime.of(0, 0) : request.getStartTime())
                 .endTime(request.getEndTime())
                 .location(request.getLocation())
+                .meetingMode("ONLINE".equalsIgnoreCase(request.getMeetingMode()) ? "ONLINE" : "PHYSICAL")
+                .meetingLink(request.getMeetingLink())
                 .agenda(request.getAgenda())
                 .status(vikoba.service.common.enums.MeetingStatus.SCHEDULED)
                 .build();
@@ -91,6 +93,8 @@ public class MeetingService {
                 .startTime(saved.getStartTime())
                 .endTime(saved.getEndTime())
                 .location(saved.getLocation())
+                .meetingMode(saved.getMeetingMode())
+                .meetingLink(saved.getMeetingLink())
                 .status(saved.getStatus() != null ? saved.getStatus().name() : null)
                 .agenda(saved.getAgenda())
                 .build();
@@ -122,25 +126,18 @@ public class MeetingService {
 
             meetingAttendanceRepository.save(ma);
 
-            // If absent, create fine according to group settings / fine type
-            if (r.getStatus() != null && r.getStatus().equalsIgnoreCase("ABSENT")) {
-                GroupSettings settings = groupSettingsRepository.findByGroupId(meeting.getGroup().getId()).orElse(null);
-                BigDecimal amount;
-                if (settings != null && settings.getLatePaymentFine() != null) {
-                    // fallback: use latePaymentFine if meeting absence fine not configured
-                    amount = settings.getLatePaymentFine();
-                } else {
-                    amount = null;
-                }
-
-                // Look up fine type MEETING_ABSENCE or create default
+            // Attendance fines always use the group's configured fine type amount.
+            if (r.getStatus() != null && (r.getStatus().equalsIgnoreCase("ABSENT") || r.getStatus().equalsIgnoreCase("LATE"))) {
+                boolean absent = r.getStatus().equalsIgnoreCase("ABSENT");
+                String fineCode = absent ? "MEETING_ABSENCE" : "MEETING_LATE";
+                String fineName = absent ? "Meeting absence" : "Late arrival";
                 FineType fineType = fineTypeRepository
-                        .findByGroupIdAndCode(meeting.getGroup().getId(), "MEETING_ABSENCE").orElseGet(() -> {
+                        .findByGroupIdAndCode(meeting.getGroup().getId(), fineCode).orElseGet(() -> {
                             FineType ft = FineType.builder()
                                     .group(meeting.getGroup())
-                                    .code("MEETING_ABSENCE")
-                                    .name("Meeting absence")
-                                    .defaultAmount(amount == null ? BigDecimal.ZERO : amount)
+                                    .code(fineCode)
+                                    .name(fineName)
+                                    .defaultAmount(BigDecimal.ZERO)
                                     .active(true)
                                     .build();
                             return fineTypeRepository.save(ft);
@@ -156,7 +153,7 @@ public class MeetingService {
                         .reference("FINE-MEET-" + meeting.getId() + "-" + gm.getId())
                         .amount(fineAmount)
                         .issuedDate(java.time.LocalDate.now())
-                        .reason("Absent from meeting: " + meeting.getTitle())
+                        .reason((absent ? "Absent from" : "Late for") + " meeting: " + meeting.getTitle())
                         .status(vikoba.service.common.enums.FineStatus.UNPAID)
                         .build();
 
@@ -178,6 +175,8 @@ public class MeetingService {
                     .startTime(m.getStartTime())
                     .endTime(m.getEndTime())
                     .location(m.getLocation())
+                    .meetingMode(m.getMeetingMode())
+                    .meetingLink(m.getMeetingLink())
                     .status(m.getStatus() != null ? m.getStatus().name() : null)
                     .agenda(m.getAgenda())
                     .build());
@@ -198,6 +197,8 @@ public class MeetingService {
                 .startTime(m.getStartTime())
                 .endTime(m.getEndTime())
                 .location(m.getLocation())
+                .meetingMode(m.getMeetingMode())
+                .meetingLink(m.getMeetingLink())
                 .status(m.getStatus() != null ? m.getStatus().name() : null)
                 .agenda(m.getAgenda())
                 .build();

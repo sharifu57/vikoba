@@ -50,7 +50,7 @@ public class ShareService {
                 .totalCapital(product.getSharePrice().multiply(BigDecimal.valueOf(totalShares)))
                 .holdersCount((int) balances.values().stream().filter(value -> value > 0).count())
                 .totalMembers(groupMemberRepository.countActiveMembersByGroupId(groupId).intValue())
-                .maximumSharesPerMember(getSettings(groupId).getMaximumSharesPerMember())
+                .maximumSharesPerMember(null)
                 .build();
     }
 
@@ -98,6 +98,10 @@ public class ShareService {
         BigDecimal amount = request.getAmount() != null && request.getAmount().compareTo(BigDecimal.ZERO) > 0
                 ? request.getAmount()
                 : product.getSharePrice().multiply(BigDecimal.valueOf(quantity));
+        BigDecimal minimum = getSettings(groupId).getMinimumSharePurchaseAmount();
+        if (minimum != null && amount.compareTo(minimum) < 0) {
+            throw new IllegalArgumentException("The minimum share purchase amount is " + minimum.toPlainString());
+        }
         ShareTransaction transaction = newTransaction(member, product, ShareTransactionType.PURCHASE,
                 quantity, amount, request.getReference());
         ShareTransaction saved = shareTransactionRepository.save(transaction);
@@ -110,6 +114,17 @@ public class ShareService {
         payment.setAllocationReferenceId(saved.getId());
         payment.setDescription("Share purchase: " + quantity + " share(s)");
         paymentService.record(groupId, payment);
+        if (request.getJamiiAmount() != null && request.getJamiiAmount().signum() > 0) {
+            RecordPaymentRequest jamiiPayment = new RecordPaymentRequest();
+            jamiiPayment.setGroupMemberId(member.getId());
+            jamiiPayment.setAmount(request.getJamiiAmount());
+            jamiiPayment.setPaymentMethod(request.getPaymentMethod());
+            jamiiPayment.setReference(saved.getReference() + "-JAMII");
+            jamiiPayment.setAllocationType(PaymentAllocationType.SOCIAL_FUND.name());
+            jamiiPayment.setAllocationReferenceId(saved.getId());
+            jamiiPayment.setDescription("Jamii amount collected with share purchase");
+            paymentService.record(groupId, jamiiPayment);
+        }
         smsNotificationService.send(member.getMember().getPhone(), "VIKOBA360: Hongera! Ununuzi wa hisa "
                 + quantity + " umepokelewa kwa TZS " + amount.toPlainString() + ". Asante kwa kuweka akiba.");
         return mapTransaction(saved);
@@ -156,7 +171,7 @@ public class ShareService {
         }
         return ShareProduct.builder()
                 .sharePrice(settings.getSharePrice())
-                .maximumShares(settings.getMaximumSharesPerMember())
+                .maximumShares(null)
                 .code(PRODUCT_CODE)
                 .name("Group Share")
                 .active(true)

@@ -16,6 +16,14 @@ import java.math.BigDecimal;
 @Builder
 public class GroupSettings extends BaseEntity {
 
+    /** Backward-compatible accessors for existing API consumers. New clients use minimumSharePurchaseAmount. */
+    @Deprecated public BigDecimal getMinimumContribution() { return minimumSharePurchaseAmount; }
+    @Deprecated public void setMinimumContribution(BigDecimal value) { minimumSharePurchaseAmount = value; }
+    @Deprecated public BigDecimal getMaximumContribution() { return null; }
+    @Deprecated public void setMaximumContribution(BigDecimal ignored) { }
+    @Deprecated public Integer getMaximumSharesPerMember() { return null; }
+    @Deprecated public void setMaximumSharesPerMember(Integer ignored) { }
+
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "group_id",
@@ -26,19 +34,12 @@ public class GroupSettings extends BaseEntity {
     private VikobaGroup group;
 
     @Column(
-            name = "minimum_contribution",
+            name = "minimum_share_purchase_amount",
             precision = 19,
             scale = 2
     )
     @Builder.Default
-    private BigDecimal minimumContribution = BigDecimal.ZERO;
-
-    @Column(
-            name = "maximum_contribution",
-            precision = 19,
-            scale = 2
-    )
-    private BigDecimal maximumContribution;
+    private BigDecimal minimumSharePurchaseAmount = BigDecimal.ZERO;
 
     @Column(
             name = "share_price",
@@ -48,8 +49,8 @@ public class GroupSettings extends BaseEntity {
     @Builder.Default
     private BigDecimal sharePrice = BigDecimal.ZERO;
 
-    @Column(name = "maximum_shares_per_member")
-    private Integer maximumSharesPerMember;
+    @Column(name = "required_loan_guarantors")
+    private Integer requiredLoanGuarantors;
 
     @Column(
             name = "loan_multiplier",
@@ -74,4 +75,8 @@ public class GroupSettings extends BaseEntity {
             scale = 2
     )
     private BigDecimal latePaymentFine;
+
+    @Column(name = "jamii_contribution_per_share_payment", precision = 19, scale = 2)
+    @Builder.Default
+    private BigDecimal jamiiContributionPerSharePayment = BigDecimal.ZERO;
 }

@@ -22,6 +22,8 @@ public class MeetingResponse {
     private LocalTime startTime;
     private LocalTime endTime;
     private String location;
+    private String meetingMode;
+    private String meetingLink;
     private String status;
     private String agenda;
 }

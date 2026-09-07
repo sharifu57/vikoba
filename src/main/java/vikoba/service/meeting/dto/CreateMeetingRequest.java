@@ -14,5 +14,7 @@ public class CreateMeetingRequest {
     private LocalTime startTime;
     private LocalTime endTime;
     private String location;
+    private String meetingMode;
+    private String meetingLink;
     private String agenda;
 }

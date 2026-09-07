@@ -11,6 +11,7 @@ public class SharePurchaseRequest {
     private Long groupMemberId;
     private Integer quantity;
     private BigDecimal amount;
+    private BigDecimal jamiiAmount;
     private String paymentMethod;
     private String reference;
 }

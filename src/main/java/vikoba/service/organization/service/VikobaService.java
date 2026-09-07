@@ -552,17 +552,14 @@ public class VikobaService {
     }
 
     private void applySettings(GroupSettings settings, GroupSettingsRequest request) {
-        if (request.getMinimumContribution() != null) {
-            settings.setMinimumContribution(nonNegative(request.getMinimumContribution(), "minimumContribution"));
-        }
-        if (request.getMaximumContribution() != null) {
-            settings.setMaximumContribution(nonNegative(request.getMaximumContribution(), "maximumContribution"));
+        if (request.getMinimumSharePurchaseAmount() != null) {
+            settings.setMinimumSharePurchaseAmount(nonNegative(request.getMinimumSharePurchaseAmount(), "minimumSharePurchaseAmount"));
         }
         if (request.getSharePrice() != null) {
             settings.setSharePrice(nonNegative(request.getSharePrice(), "sharePrice"));
         }
-        if (request.getMaximumSharesPerMember() != null) {
-            settings.setMaximumSharesPerMember(positive(request.getMaximumSharesPerMember(), "maximumSharesPerMember"));
+        if (request.getRequiredLoanGuarantors() != null) {
+            settings.setRequiredLoanGuarantors(nonNegative(request.getRequiredLoanGuarantors(), "requiredLoanGuarantors"));
         }
         if (request.getLoanMultiplier() != null) {
             settings.setLoanMultiplier(nonNegative(request.getLoanMultiplier(), "loanMultiplier"));
@@ -577,9 +574,8 @@ public class VikobaService {
         if (request.getLatePaymentFine() != null) {
             settings.setLatePaymentFine(nonNegative(request.getLatePaymentFine(), "latePaymentFine"));
         }
-        if (settings.getMaximumContribution() != null
-                && settings.getMaximumContribution().compareTo(settings.getMinimumContribution()) < 0) {
-            throw new IllegalArgumentException("maximumContribution cannot be less than minimumContribution.");
+        if (request.getJamiiContributionPerSharePayment() != null) {
+            settings.setJamiiContributionPerSharePayment(nonNegative(request.getJamiiContributionPerSharePayment(), "jamiiContributionPerSharePayment"));
         }
     }
 
@@ -593,6 +589,13 @@ public class VikobaService {
     private Integer positive(Integer value, String field) {
         if (value < 1) {
             throw new IllegalArgumentException(field + " must be greater than zero.");
+        }
+        return value;
+    }
+
+    private Integer nonNegative(Integer value, String field) {
+        if (value < 0) {
+            throw new IllegalArgumentException(field + " cannot be negative.");
         }
         return value;
     }

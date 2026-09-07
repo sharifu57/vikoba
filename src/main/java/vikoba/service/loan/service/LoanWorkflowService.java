@@ -33,6 +33,7 @@ public class LoanWorkflowService {
     private final PaymentRepository payments;
     private final FineRepository fines;
     private final FineTypeRepository fineTypes;
+    private final LoanGuarantorRepository guarantors;
     private final GroupSettingsRepository groupSettingsRepository;
     private final SmsNotificationService smsNotificationService;
 
@@ -70,6 +71,8 @@ public class LoanWorkflowService {
         GroupSettings settings = groupSettingsRepository.findByGroupId(groupId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Configure loan settings before accepting applications."));
+
+        validateGuarantors(groupId, member, r.getGuarantorIds(), settings.getRequiredLoanGuarantors());
 
         // 4. Requested amount
         BigDecimal amount = positive(
@@ -200,7 +203,38 @@ public class LoanWorkflowService {
                                 "purpose"))
                         .build());
 
+        List<Long> guarantorIds = r.getGuarantorIds() == null ? List.of() : r.getGuarantorIds();
+        BigDecimal amountPerGuarantor = guarantorIds.isEmpty() ? BigDecimal.ZERO
+                : amount.divide(BigDecimal.valueOf(guarantorIds.size()), 2, RoundingMode.HALF_UP);
+        for (Long guarantorId : guarantorIds) {
+            guarantors.save(LoanGuarantor.builder()
+                    .loan(loan)
+                    .groupMember(members.findById(guarantorId).orElseThrow())
+                    .guaranteedAmount(amountPerGuarantor)
+                    .build());
+        }
+
         return response(loan);
+    }
+
+    private void validateGuarantors(Long groupId, GroupMember applicant, List<Long> requestedIds, Integer requiredCount) {
+        int required = requiredCount == null ? 0 : requiredCount;
+        List<Long> ids = requestedIds == null ? List.of() : requestedIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.size() != required) {
+            throw new IllegalArgumentException("This group requires exactly " + required + " loan guarantor(s).");
+        }
+        for (Long id : ids) {
+            GroupMember guarantor = members.findById(id)
+                    .filter(candidate -> candidate.getGroup().getId().equals(groupId))
+                    .orElseThrow(() -> new IllegalArgumentException("Every guarantor must belong to this group."));
+            if (guarantor.getId().equals(applicant.getId())) {
+                throw new IllegalArgumentException("An applicant cannot guarantee their own loan.");
+            }
+            if (!guarantors.findByGroupMemberIdAndLoanStatusIn(id,
+                    List.of(LoanStatus.PENDING, LoanStatus.UNDER_REVIEW, LoanStatus.APPROVED, LoanStatus.ACTIVE, LoanStatus.DEFAULTED)).isEmpty()) {
+                throw new IllegalArgumentException("A selected guarantor is already committed to another open loan.");
+            }
+        }
     }
 
     @Transactional
