@@ -1,16 +1,16 @@
 package vikoba.service.auth.controller;
 
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import lombok.RequiredArgsConstructor;
 import vikoba.service.auth.dto.AuthLookUpResponse;
 import vikoba.service.auth.dto.LoginRequest;
 import vikoba.service.auth.dto.RegisterRequest;
 import vikoba.service.auth.dto.ResendOtpRequest;
-import vikoba.service.auth.dto.UserSessionResponse;
 import vikoba.service.auth.dto.UserSessionWithGroupResponse;
 import vikoba.service.auth.dto.VerifyOtpRequest;
 import vikoba.service.auth.service.AuthService;
