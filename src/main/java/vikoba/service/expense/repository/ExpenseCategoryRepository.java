@@ -7,6 +7,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ExpenseCategoryRepository extends JpaRepository<ExpenseCategory, Long> {
+    List<ExpenseCategory> findByGroupIsNullOrderByNameAsc();
+    List<ExpenseCategory> findByGroupIsNullAndActiveTrueOrderByNameAsc();
+    Optional<ExpenseCategory> findByIdAndGroupIsNull(Long id);
+    Optional<ExpenseCategory> findByGroupIsNullAndNameIgnoreCase(String name);
     List<ExpenseCategory> findByGroupIdOrderByNameAsc(Long groupId);
     List<ExpenseCategory> findByGroupIdAndActiveTrueOrderByNameAsc(Long groupId);
     Optional<ExpenseCategory> findByIdAndGroupId(Long id, Long groupId);

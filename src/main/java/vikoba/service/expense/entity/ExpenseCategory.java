@@ -14,8 +14,9 @@ import vikoba.service.organization.entity.VikobaGroup;
 @AllArgsConstructor
 @Builder
 public class ExpenseCategory extends BaseEntity {
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "group_id", nullable = false)
+    /** Categories are shared reference data, not owned by an individual Kikoba group. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "group_id")
     private VikobaGroup group;
 
     @Column(nullable = false, length = 100)

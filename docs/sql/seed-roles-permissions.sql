@@ -1,7 +1,11 @@
 -- Idempotent system roles and permissions. Run in DBeaver after the role_permissions
 -- table has been created by Hibernate (ddl-auto=update).
 INSERT INTO roles (name, description, created_at, updated_at) VALUES
- ('GROUP_ADMIN','Full administration of a VIKOBA group',NOW(),NOW()),
+ ('GROUP_ADMIN','Full group administration access',NOW(),NOW()),
+ ('GROUP_CHAIRMAN','Group chairman / Mwenyekiti with broad group leadership access',NOW(),NOW()),
+ ('ACCOUNTANT','Financial records, payments and reconciliation',NOW(),NOW()),
+ ('CHAIRPERSON','Legacy chairperson role',NOW(),NOW()),
+ ('VICE_CHAIRPERSON','Legacy vice-chairperson role',NOW(),NOW()),
  ('TREASURER','Payments, contributions and dividend administration',NOW(),NOW()),
  ('LOAN_OFFICER','Loan applications and repayments',NOW(),NOW()),
  ('SECRETARY','Members, meetings and attendance',NOW(),NOW()),
@@ -26,6 +30,12 @@ VALUES
     ('DIVIDEND_MANAGE', 'Generate and approve dividends', NOW(), NOW()),
     ('REPORT_VIEW', 'View reports and dashboards', NOW(), NOW()),
     ('USER_ROLE_MANAGE', 'Assign users, roles and permissions', NOW(), NOW())
+     ,('PAYMENT_VIEW', 'View received payments and payment proofs', NOW(), NOW())
+     ,('PAYMENT_APPROVE', 'Approve or reject received payments', NOW(), NOW())
+     ,('SHARE_PURCHASE_APPROVE', 'Approve manual share purchase proofs', NOW(), NOW())
+     ,('WORKFLOW_MANAGE', 'Configure group workflow nodes', NOW(), NOW())
+     ,('GROUP_MANAGE', 'Manage group settings and governance', NOW(), NOW())
+     ,('AUDIT_VIEW', 'View group audit records', NOW(), NOW())
 ON CONFLICT (name) DO NOTHING;
 
 
@@ -35,8 +45,18 @@ WHERE r.name='GROUP_ADMIN'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id FROM roles r JOIN permissions p ON p.name IN ('MEMBER_VIEW','CONTRIBUTION_MANAGE','SHARE_MANAGE','DIVIDEND_MANAGE','REPORT_VIEW')
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.name IN
+ ('GROUP_MANAGE','MEMBER_VIEW','MEMBER_MANAGE','MEETING_MANAGE','REPORT_VIEW','AUDIT_VIEW','USER_ROLE_MANAGE','WORKFLOW_MANAGE')
+WHERE r.name='GROUP_CHAIRMAN'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.name IN ('MEMBER_VIEW','CONTRIBUTION_MANAGE','SHARE_MANAGE','DIVIDEND_MANAGE','REPORT_VIEW','PAYMENT_VIEW','PAYMENT_APPROVE','SHARE_PURCHASE_APPROVE')
 WHERE r.name='TREASURER' ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r JOIN permissions p ON p.name IN ('MEMBER_VIEW','CONTRIBUTION_MANAGE','SHARE_MANAGE','REPORT_VIEW','PAYMENT_VIEW','PAYMENT_APPROVE','SHARE_PURCHASE_APPROVE')
+WHERE r.name='ACCOUNTANT' ON CONFLICT DO NOTHING;
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.name IN ('MEMBER_VIEW','LOAN_MANAGE','REPORT_VIEW')
 WHERE r.name='LOAN_OFFICER' ON CONFLICT DO NOTHING;
@@ -50,7 +70,7 @@ INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.name IN ('MEMBER_VIEW','REPORT_VIEW')
 WHERE r.name='MEMBER' ON CONFLICT DO NOTHING;
 
--- Make the user linked to the earliest member in every group a global GROUP_ADMIN.
+-- Make the user linked to the earliest member in every group a group chairman.
 INSERT INTO user_roles (
     user_id,
     role_id,
@@ -68,7 +88,7 @@ JOIN members m
 JOIN group_members gm
     ON gm.member_id = m.id
 JOIN roles r
-    ON r.name = 'GROUP_ADMIN'
+    ON r.name = 'GROUP_CHAIRMAN'
 WHERE gm.id = (
     SELECT MIN(gm2.id)
     FROM group_members gm2

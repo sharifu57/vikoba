@@ -7,6 +7,8 @@ import lombok.Setter;
 import vikoba.service.organization.dto.GroupSettingsRequest;
 import vikoba.service.organization.dto.VikobaGroupCreateResponse;
 
+import java.util.List;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -15,4 +17,7 @@ public class UserGroupResponse {
     private VikobaGroupCreateResponse group;
     private GroupSettingsRequest settings;
     private boolean settingsConfigured;
+    private String role;
+    private List<String> roles;
+    private List<String> permissions;
 }

@@ -14,4 +14,6 @@ public interface FineTypeRepository extends JpaRepository<FineType, Long> {
                 AND ft.code = :code
             """)
     Optional<FineType> findByGroupIdAndCode(@Param("groupId") Long groupId, @Param("code") String code);
+
+    java.util.List<FineType> findByGroupIdOrderByNameAsc(Long groupId);
 }

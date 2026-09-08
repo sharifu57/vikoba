@@ -2,16 +2,19 @@ package vikoba.service.organization.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PutMapping;
 import vikoba.service.common.response.ApiResponse;
 import vikoba.service.organization.dto.AddMemberRequest;
 import vikoba.service.organization.dto.MemberResponse;
 import vikoba.service.organization.dto.MemberRoleOptionResponse;
+import vikoba.service.organization.dto.MemberAccessRequest;
 import vikoba.service.organization.service.MemberService;
 import vikoba.service.member360.service.Member360Service;
 import vikoba.service.member360.dto.Member360Response;
@@ -31,6 +34,8 @@ public class MemberController {
             return ResponseEntity.ok(memberService.addMemberToGroup(request));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }
@@ -42,6 +47,24 @@ public class MemberController {
                 .ok(ApiResponse.success("Member roles retrieved successfully.", memberService.getMemberRoles()));
     }
 
+    @GetMapping("/members/permissions")
+    public ResponseEntity<ApiResponse<List<String>>> getPermissions() {
+        return ResponseEntity.ok(ApiResponse.success("Permissions retrieved successfully.", memberService.getPermissions()));
+    }
+
+    @PutMapping("/members/group/{groupId}/{groupMemberId}/access")
+    public ResponseEntity<ApiResponse<MemberResponse>> updateMemberAccess(@PathVariable Long groupId,
+            @PathVariable Long groupMemberId, @RequestBody MemberAccessRequest request) {
+        try {
+            return ResponseEntity.ok(ApiResponse.success("Member access updated successfully.",
+                    memberService.updateMemberAccess(groupId, groupMemberId, request)));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
     @GetMapping("/members/group/{groupId}")
     public ResponseEntity<ApiResponse<List<MemberResponse>>> getMembersByGroup(@PathVariable Long groupId) {
         try {
@@ -49,6 +72,8 @@ public class MemberController {
                     ApiResponse.success("Members retrieved successfully.", memberService.getMembersByGroup(groupId)));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }

@@ -35,6 +35,26 @@ public class FineController {
         return ResponseEntity.ok(ApiResponse.success("Fine types retrieved.", service.types(groupId)));
     }
 
+    @PostMapping("/types")
+    public ResponseEntity<ApiResponse<FineTypeResponse>> createType(@RequestParam Long groupId,
+            @RequestBody FineTypeRequest request) {
+        return ResponseEntity
+                .ok(ApiResponse.success("Fine type configured successfully.", service.createType(groupId, request)));
+    }
+
+    @PutMapping("/types/{id}")
+    public ResponseEntity<ApiResponse<FineTypeResponse>> updateType(@PathVariable Long id, @RequestParam Long groupId,
+            @RequestBody FineTypeRequest request) {
+        return ResponseEntity
+                .ok(ApiResponse.success("Fine type updated successfully.", service.updateType(groupId, id, request)));
+    }
+
+    @DeleteMapping("/types/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteType(@PathVariable Long id, @RequestParam Long groupId) {
+        service.deleteType(groupId, id);
+        return ResponseEntity.ok(ApiResponse.success("Fine type disabled successfully.", null));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> validation(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));

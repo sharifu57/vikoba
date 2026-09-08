@@ -73,17 +73,16 @@ public class ExpenseService {
 
     @Transactional(readOnly = true)
     public List<ExpenseCategoryResponse> listCategories(Long groupId, boolean includeInactive) {
-        requireGroup(groupId);
-        List<ExpenseCategory> categories = includeInactive ? categoryRepository.findByGroupIdOrderByNameAsc(groupId) : categoryRepository.findByGroupIdAndActiveTrueOrderByNameAsc(groupId);
+        List<ExpenseCategory> categories = includeInactive ? categoryRepository.findByGroupIsNullOrderByNameAsc() : categoryRepository.findByGroupIsNullAndActiveTrueOrderByNameAsc();
         return categories.stream().map(this::toCategoryResponse).toList();
     }
 
     @Transactional
     public ExpenseCategoryResponse createCategory(Long groupId, ExpenseCategoryRequest request) {
-        VikobaGroup group = requireGroup(groupId);
+        requireGroup(groupId);
         String name = required(request.getName(), "category name");
-        if (categoryRepository.findByGroupIdAndNameIgnoreCase(groupId, name).isPresent()) throw new IllegalArgumentException("An expense category with this name already exists.");
-        ExpenseCategory category = categoryRepository.save(ExpenseCategory.builder().group(group).name(name).description(blankToNull(request.getDescription())).active(request.getActive() == null || request.getActive()).build());
+        if (categoryRepository.findByGroupIsNullAndNameIgnoreCase(name).isPresent()) throw new IllegalArgumentException("An expense category with this name already exists.");
+        ExpenseCategory category = categoryRepository.save(ExpenseCategory.builder().name(name).description(blankToNull(request.getDescription())).active(request.getActive() == null || request.getActive()).build());
         return toCategoryResponse(category);
     }
 
@@ -98,9 +97,9 @@ public class ExpenseService {
     }
 
     private ExpenseCategory resolveCategory(Long groupId, ExpenseRequest request) {
-        if (request.getCategoryId() != null) return categoryRepository.findByIdAndGroupId(request.getCategoryId(), groupId).orElseThrow(() -> new IllegalArgumentException("Expense category not found in this group."));
+        if (request.getCategoryId() != null) return categoryRepository.findByIdAndGroupIsNull(request.getCategoryId()).orElseThrow(() -> new IllegalArgumentException("Expense category not found."));
         String name = required(request.getCategoryName(), "categoryName or categoryId");
-        return categoryRepository.findByGroupIdAndNameIgnoreCase(groupId, name).orElseGet(() -> categoryRepository.save(ExpenseCategory.builder().group(requireGroup(groupId)).name(name).active(true).build()));
+        return categoryRepository.findByGroupIsNullAndNameIgnoreCase(name).orElseGet(() -> categoryRepository.save(ExpenseCategory.builder().name(name).active(true).build()));
     }
 
     private ExpenseStatus parseStatus(String value) {
@@ -113,5 +112,5 @@ public class ExpenseService {
     private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private String generatedReference() { return "EXP-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase(); }
     private ExpenseResponse toResponse(Expense expense) { return ExpenseResponse.builder().id(expense.getId()).groupId(expense.getGroup().getId()).categoryId(expense.getCategory().getId()).categoryName(expense.getCategory().getName()).reference(expense.getReference()).description(expense.getDescription()).amount(expense.getAmount()).expenseDate(expense.getExpenseDate()).receiptNumber(expense.getReceiptNumber()).status(expense.getStatus().name()).rejectionReason(expense.getRejectionReason()).createdAt(expense.getCreatedAt()).updatedAt(expense.getUpdatedAt()).build(); }
-    private ExpenseCategoryResponse toCategoryResponse(ExpenseCategory category) { return ExpenseCategoryResponse.builder().id(category.getId()).groupId(category.getGroup().getId()).name(category.getName()).description(category.getDescription()).active(category.isActive()).build(); }
+    private ExpenseCategoryResponse toCategoryResponse(ExpenseCategory category) { return ExpenseCategoryResponse.builder().id(category.getId()).groupId(category.getGroup() == null ? null : category.getGroup().getId()).name(category.getName()).description(category.getDescription()).active(category.isActive()).build(); }
 }

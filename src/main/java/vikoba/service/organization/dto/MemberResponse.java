@@ -10,6 +10,7 @@ import vikoba.service.common.enums.MembershipStatus;
 import vikoba.service.common.enums.MembershipType;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Getter
 @Setter
@@ -37,6 +38,8 @@ public class MemberResponse {
     private MembershipType membershipType;
     private MembershipStatus membershipStatus;
     private GroupRole role;
+    private List<GroupRole> roles;
+    private List<String> permissions;
     private LocalDate joinedDate;
     private LocalDate createdAt;
 }

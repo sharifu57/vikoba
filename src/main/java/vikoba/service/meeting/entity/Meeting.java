@@ -37,6 +37,13 @@ public class Meeting extends BaseEntity {
     @Column(length = 255)
     private String location;
 
+    @Column(name = "meeting_mode", nullable = false, length = 20)
+    @Builder.Default
+    private String meetingMode = "PHYSICAL";
+
+    @Column(name = "meeting_link", length = 500)
+    private String meetingLink;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private MeetingStatus status;
