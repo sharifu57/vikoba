@@ -37,6 +37,8 @@ import java.util.UUID;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import vikoba.service.organization.dto.MemberAccessRequest;
+import vikoba.service.organization.dto.UpdateMemberRequest;
+import vikoba.service.organization.dto.UpdateMembershipStatusRequest;
 
 @Service
 @RequiredArgsConstructor
@@ -69,7 +71,7 @@ public class MemberService {
                         throw new IllegalArgumentException(
                                         "groupId is required.");
                 }
-                authorizationService.requirePermission(groupId, "USER_ROLE_MANAGE");
+                authorizationService.requireMemberManagementAccess(groupId);
 
                 // ============================================================
                 // 2. FIND GROUP
@@ -325,21 +327,80 @@ public class MemberService {
                 return toResponse(membership);
         }
 
+        @Transactional
+        public MemberResponse updateMemberProfile(Long groupId, Long groupMemberId, UpdateMemberRequest request) {
+                authorizationService.requireMemberManagementAccess(groupId);
+                GroupMember membership = membershipInGroup(groupId, groupMemberId);
+                if (request == null) throw new IllegalArgumentException("Member details are required.");
+
+                Member member = membership.getMember();
+                String phone = blankToNull(request.getPhone());
+                if (phone != null && !phone.equals(member.getPhone())) {
+                        Member existing = memberRepository.findByPhone(phone).orElse(null);
+                        if (existing != null && !existing.getId().equals(member.getId())) {
+                                throw new IllegalArgumentException("That phone number is already assigned to another member.");
+                        }
+                        member.setPhone(phone);
+                }
+
+                member.setFirstName(required(request.getFirstName(), "firstName"));
+                member.setLastName(required(request.getLastName(), "lastName"));
+                member.setMiddleName(blankToNull(request.getMiddleName()));
+                member.setEmail(blankToNull(request.getEmail()));
+                member.setNationalId(blankToNull(request.getNationalId()));
+                member.setAddress(blankToNull(request.getAddress()));
+                member.setOccupation(blankToNull(request.getOccupation()));
+                member.setNextOfKinName(blankToNull(request.getNextOfKinName()));
+                member.setNextOfKinPhone(blankToNull(request.getNextOfKinPhone()));
+                member.setNextOfKinRelationship(blankToNull(request.getNextOfKinRelationship()));
+                memberRepository.save(member);
+
+                return toResponse(membership);
+        }
+
+        @Transactional
+        public MemberResponse updateMembershipStatus(Long groupId, Long groupMemberId,
+                        UpdateMembershipStatusRequest request) {
+                authorizationService.requireMemberManagementAccess(groupId);
+                GroupMember membership = membershipInGroup(groupId, groupMemberId);
+                if (request == null || request.getStatus() == null) {
+                        throw new IllegalArgumentException("Membership status is required.");
+                }
+                if (request.getStatus() == MembershipStatus.PENDING || request.getStatus() == MembershipStatus.REJECTED) {
+                        throw new IllegalArgumentException("Choose ACTIVE, SUSPENDED, or EXITED for an existing member.");
+                }
+
+                membership.setStatus(request.getStatus());
+                membership.setExitDate(request.getStatus() == MembershipStatus.EXITED ? LocalDate.now() : null);
+                groupMemberRepository.save(membership);
+                return toResponse(membership);
+        }
+
         @Transactional(readOnly = true)
         public List<MemberResponse> getMembersByGroup(Long groupId) {
 
                 if (groupId == null) {
                         throw new IllegalArgumentException("groupId is required.");
                 }
-                authorizationService.requireMembership(groupId);
+                authorizationService.requirePermission(groupId, "MEMBER_VIEW");
 
                 return groupMemberRepository
-                                .findByGroupIdAndStatus(
-                                                groupId,
-                                                MembershipStatus.ACTIVE)
+                                .findByGroupId(groupId)
                                 .stream()
                                 .map(this::toResponse)
                                 .toList();
+        }
+
+        private GroupMember membershipInGroup(Long groupId, Long groupMemberId) {
+                if (groupId == null || groupMemberId == null) {
+                        throw new IllegalArgumentException("groupId and groupMemberId are required.");
+                }
+                GroupMember membership = groupMemberRepository.findById(groupMemberId)
+                                .orElseThrow(() -> new IllegalArgumentException("Group member not found."));
+                if (!membership.getGroup().getId().equals(groupId)) {
+                        throw new IllegalArgumentException("Member does not belong to this group.");
+                }
+                return membership;
         }
 
         private MemberResponse mapToResponse(VikobaGroup group, Member member, GroupMember groupMember,

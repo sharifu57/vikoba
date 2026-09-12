@@ -45,6 +45,19 @@ public class GroupAuthorizationService {
         }
     }
 
+    /** Member register changes are reserved for group leadership or an explicit delegation. */
+    @Transactional(readOnly = true)
+    public void requireMemberManagementAccess(Long groupId) {
+        List<MemberRole> roles = currentRoles(groupId);
+        boolean isGroupLeader = roles.stream().anyMatch(role -> role.getRole() == GroupRole.GROUP_ADMIN
+                || role.getRole() == GroupRole.GROUP_CHAIRMAN
+                || role.getRole() == GroupRole.CHAIRPERSON);
+        if (isGroupLeader || hasPermission(groupId, "MEMBER_MANAGE")) {
+            return;
+        }
+        throw new AccessDeniedException("Only a group admin, chairperson, or member manager can manage members");
+    }
+
     @Transactional(readOnly = true)
     public boolean hasPermission(Long groupId, String permission) {
         if (currentRoles(groupId).stream().anyMatch(memberRole -> memberRole.getRole() == GroupRole.GROUP_ADMIN)) {

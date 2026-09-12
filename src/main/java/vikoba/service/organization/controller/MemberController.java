@@ -15,6 +15,8 @@ import vikoba.service.organization.dto.AddMemberRequest;
 import vikoba.service.organization.dto.MemberResponse;
 import vikoba.service.organization.dto.MemberRoleOptionResponse;
 import vikoba.service.organization.dto.MemberAccessRequest;
+import vikoba.service.organization.dto.UpdateMemberRequest;
+import vikoba.service.organization.dto.UpdateMembershipStatusRequest;
 import vikoba.service.organization.service.MemberService;
 import vikoba.service.member360.service.Member360Service;
 import vikoba.service.member360.dto.Member360Response;
@@ -58,6 +60,32 @@ public class MemberController {
         try {
             return ResponseEntity.ok(ApiResponse.success("Member access updated successfully.",
                     memberService.updateMemberAccess(groupId, groupMemberId, request)));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
+    @PutMapping("/members/group/{groupId}/{groupMemberId}")
+    public ResponseEntity<ApiResponse<MemberResponse>> updateMember(@PathVariable Long groupId,
+            @PathVariable Long groupMemberId, @RequestBody UpdateMemberRequest request) {
+        try {
+            return ResponseEntity.ok(ApiResponse.success("Member updated successfully.",
+                    memberService.updateMemberProfile(groupId, groupMemberId, request)));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
+    @PutMapping("/members/group/{groupId}/{groupMemberId}/status")
+    public ResponseEntity<ApiResponse<MemberResponse>> updateMembershipStatus(@PathVariable Long groupId,
+            @PathVariable Long groupMemberId, @RequestBody UpdateMembershipStatusRequest request) {
+        try {
+            return ResponseEntity.ok(ApiResponse.success("Membership status updated successfully.",
+                    memberService.updateMembershipStatus(groupId, groupMemberId, request)));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
         } catch (AccessDeniedException ex) {
