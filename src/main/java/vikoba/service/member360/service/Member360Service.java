@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vikoba.service.contribution.dto.MemberContributionResponse;
 import vikoba.service.contribution.entity.MemberContribution;
 import vikoba.service.contribution.repository.MemberContributionRepository;
+import vikoba.service.contribution.service.ShareService;
 import vikoba.service.fine.dto.FineResponse;
 import vikoba.service.fine.entity.Fine;
 import vikoba.service.fine.repository.FineRepository;
@@ -16,6 +17,8 @@ import vikoba.service.meeting.dto.MeetingAttendanceResponse;
 import vikoba.service.meeting.entity.Meeting;
 import vikoba.service.meeting.entity.MeetingAttendance;
 import vikoba.service.meeting.repository.MeetingAttendanceRepository;
+import vikoba.service.meeting.repository.MeetingRepository;
+import vikoba.service.meeting.dto.MeetingResponse;
 import vikoba.service.organization.entity.GroupMember;
 import vikoba.service.organization.entity.Member;
 import vikoba.service.organization.entity.VikobaGroup;
@@ -28,6 +31,7 @@ import vikoba.service.organization.repository.MemberRepository;
 import vikoba.service.organization.repository.MemberRoleRepository;
 import vikoba.service.organization.repository.VikobaGroupRepository;
 import vikoba.service.organization.dto.MemberResponse;
+import vikoba.service.organization.service.GroupAuthorizationService;
 
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +48,9 @@ public class Member360Service {
     private final MeetingAttendanceRepository meetingAttendanceRepository;
     private final SocialFundContributionRepository socialFundContributionRepository;
     private final vikoba.service.organization.service.MemberService memberService;
+    private final GroupAuthorizationService authorizationService;
+    private final ShareService shareService;
+    private final MeetingRepository meetingRepository;
 
     @Transactional(readOnly = true)
     public Member360Response getMember360(Long groupMemberId) {
@@ -82,6 +89,8 @@ public class Member360Service {
                     "Group membership is not attached to a group."
             );
         }
+
+        authorizationService.requireSelfOrGroupDashboardAccess(group.getId(), groupMemberId);
 
 
         // ============================================================
@@ -181,6 +190,13 @@ public class Member360Service {
                         .map(this::mapSocialFundContribution)
                         .toList();
 
+        int sharesOwned = shareService.getMemberShareBalance(group.getId(), groupMemberId);
+        List<MeetingResponse> upcomingMeetings = meetingRepository.findUpcomingByGroupId(group.getId())
+                .stream()
+                .limit(5)
+                .map(this::mapUpcomingMeeting)
+                .toList();
+
 
         // ============================================================
         // 10. BUILD RESPONSE
@@ -211,8 +227,27 @@ public class Member360Service {
                 socialFundContributions
         );
 
+        response.setSharesOwned(sharesOwned);
+        response.setUpcomingMeetings(upcomingMeetings);
+
 
         return response;
+    }
+
+    private MeetingResponse mapUpcomingMeeting(Meeting meeting) {
+        return MeetingResponse.builder()
+                .id(meeting.getId())
+                .groupId(meeting.getGroup() != null ? meeting.getGroup().getId() : null)
+                .title(meeting.getTitle())
+                .meetingDate(meeting.getMeetingDate())
+                .startTime(meeting.getStartTime())
+                .endTime(meeting.getEndTime())
+                .location(meeting.getLocation())
+                .meetingMode(meeting.getMeetingMode())
+                .meetingLink(meeting.getMeetingLink())
+                .status(meeting.getStatus() != null ? meeting.getStatus().name() : null)
+                .agenda(meeting.getAgenda())
+                .build();
     }
 
     private MemberContributionResponse mapContribution(

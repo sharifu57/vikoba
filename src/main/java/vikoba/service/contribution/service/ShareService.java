@@ -90,6 +90,11 @@ public class ShareService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public int getMemberShareBalance(Long groupId, Long groupMemberId) {
+        return calculateBalance(shareTransactionRepository.findLedgerByGroupId(groupId), groupMemberId);
+    }
+
     @Transactional
     public ShareTransactionResponse purchase(Long groupId, SharePurchaseRequest request) {
         ShareProduct product = getOrCreateProduct(groupId);

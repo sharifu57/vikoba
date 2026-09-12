@@ -5,6 +5,7 @@ import vikoba.service.contribution.dto.MemberContributionResponse;
 import vikoba.service.fine.dto.FineResponse;
 import vikoba.service.loan.dto.LoanResponse;
 import vikoba.service.meeting.dto.MeetingAttendanceResponse;
+import vikoba.service.meeting.dto.MeetingResponse;
 import vikoba.service.organization.dto.MemberResponse;
 import vikoba.service.social.dto.SocialFundContributionResponse;
 
@@ -27,4 +28,8 @@ public class Member360Response {
     private List<MeetingAttendanceResponse> meetingAttendance;
 
     private List<SocialFundContributionResponse> socialFundContributions;
+
+    private Integer sharesOwned;
+
+    private List<MeetingResponse> upcomingMeetings;
 }

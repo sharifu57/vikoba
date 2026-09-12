@@ -14,6 +14,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserGroupResponse {
+    private Long groupMemberId;
+    private Long memberId;
     private VikobaGroupCreateResponse group;
     private GroupSettingsRequest settings;
     private boolean settingsConfigured;

@@ -29,6 +29,7 @@ VALUES
     ('FINE_MANAGE', 'Issue, waive and collect fines', NOW(), NOW()),
     ('DIVIDEND_MANAGE', 'Generate and approve dividends', NOW(), NOW()),
     ('REPORT_VIEW', 'View reports and dashboards', NOW(), NOW()),
+    ('DASHBOARD_GROUP_VIEW', 'View the group-wide dashboard', NOW(), NOW()),
     ('USER_ROLE_MANAGE', 'Assign users, roles and permissions', NOW(), NOW())
      ,('PAYMENT_VIEW', 'View received payments and payment proofs', NOW(), NOW())
      ,('PAYMENT_APPROVE', 'Approve or reject received payments', NOW(), NOW())

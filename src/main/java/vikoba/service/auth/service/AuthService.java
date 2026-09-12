@@ -83,10 +83,6 @@ public class AuthService {
         @Transactional
         public AuthResponse<AuthLookUpResponse> register(RegisterRequest request) {
 
-                // ============================================================
-                // 1. VALIDATE PHONE
-                // ============================================================
-
                 if (request.getPhone() == null || request.getPhone().isBlank()) {
                         return new AuthResponse<>(
                                         false,
@@ -103,10 +99,6 @@ public class AuthService {
                                         null);
                 }
 
-                // ============================================================
-                // 2. VALIDATE EMAIL
-                // ============================================================
-
                 String email = request.getEmail() == null
                                 ? null
                                 : request.getEmail().trim();
@@ -120,10 +112,6 @@ public class AuthService {
                                         "A user with this email already exists.",
                                         null);
                 }
-
-                // ============================================================
-                // 3. PREPARE NAME
-                // ============================================================
 
                 String fullName = request.getFullName() == null
                                 ? ""
@@ -144,15 +132,7 @@ public class AuthService {
                                 ? nameParts[1]
                                 : "";
 
-                // ============================================================
-                // 4. GENERATE MEMBER NUMBER
-                // ============================================================
-
                 String memberNumber = generateMemberNumber();
-
-                // ============================================================
-                // 5. CREATE MEMBER
-                // ============================================================
 
                 Member member = Member.builder()
                                 .memberNumber(memberNumber)
@@ -163,11 +143,6 @@ public class AuthService {
                                 .build();
 
                 member = memberRepository.save(member);
-
-                // ============================================================
-                // 6. CREATE USER AND LINK MEMBER
-                // ============================================================
-
                 User user = User.builder()
                                 .member(member)
                                 .username(fullName)
@@ -182,16 +157,7 @@ public class AuthService {
 
                 user = userRepository.save(user);
 
-                // ============================================================
-                // 7. CREATE PHONE VERIFICATION OTP
-                // ============================================================
-
                 createOtp(user, "phone_verification");
-
-                // ============================================================
-                // 8. RESPONSE
-                // ============================================================
-
                 return new AuthResponse<>(
                                 true,
                                 "Registration successful. OTP sent for phone verification.",
@@ -518,6 +484,8 @@ public class AuthService {
 
                                 groups.add(
                                                 new UserGroupResponse(
+                                                                membership.getId(),
+                                                                membership.getMember().getId(),
                                                                 groupResponse,
                                                                 settingsResponse,
                                                                 settingsConfigured,

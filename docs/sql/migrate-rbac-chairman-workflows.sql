@@ -20,6 +20,7 @@ VALUES
  ('PAYMENT_VIEW', 'View received payments and proof submissions', NOW(), NOW()),
  ('PAYMENT_APPROVE', 'Approve or reject payment proofs', NOW(), NOW()),
  ('SHARE_PURCHASE_APPROVE', 'Approve manual share purchase proofs', NOW(), NOW()),
+ ('DASHBOARD_GROUP_VIEW', 'View the group-wide dashboard', NOW(), NOW()),
  ('WORKFLOW_MANAGE', 'Configure group workflow nodes', NOW(), NOW()),
  ('AUDIT_VIEW', 'View group audit records', NOW(), NOW())
 ON CONFLICT (name) DO NOTHING;

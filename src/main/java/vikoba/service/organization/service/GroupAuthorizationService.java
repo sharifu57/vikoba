@@ -71,6 +71,37 @@ public class GroupAuthorizationService {
         throw new AccessDeniedException("You may only perform this action for your own membership");
     }
 
+    /** A member may always see their own dashboard; group-wide data needs elevated dashboard access. */
+    @Transactional(readOnly = true)
+    public void requireSelfOrGroupDashboardAccess(Long groupId, Long groupMemberId) {
+        GroupMember currentMembership = currentMembership(groupId);
+        if (currentMembership.getId().equals(groupMemberId)) {
+            return;
+        }
+        requireGroupDashboardAccess(groupId);
+    }
+
+    /**
+     * Group admins have full access. Other office holders must also retain a
+     * dashboard/report permission; an explicitly granted DASHBOARD_GROUP_VIEW
+     * permission supports custom role configurations.
+     */
+    @Transactional(readOnly = true)
+    public void requireGroupDashboardAccess(Long groupId) {
+        List<MemberRole> roles = currentRoles(groupId);
+        if (roles.stream().anyMatch(role -> role.getRole() == GroupRole.GROUP_ADMIN)) {
+            return;
+        }
+
+        boolean hasOfficeRole = roles.stream().anyMatch(role -> role.getRole() != GroupRole.MEMBER);
+        if ((hasOfficeRole && hasPermission(groupId, "REPORT_VIEW"))
+                || hasPermission(groupId, "DASHBOARD_GROUP_VIEW")) {
+            return;
+        }
+
+        throw new AccessDeniedException("You do not have access to the group dashboard");
+    }
+
     /**
      * Evaluates a dynamically configured workflow action. An admin may always
      * act; otherwise the member must match one active node for the action and

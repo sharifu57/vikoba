@@ -86,6 +86,8 @@ public class MemberController {
             return ResponseEntity.ok(ApiResponse.success("Member details retrieved successfully.", resp));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }
