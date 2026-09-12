@@ -2,11 +2,13 @@ package vikoba.service.contribution.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.access.AccessDeniedException;
 import vikoba.service.common.response.ApiResponse;
 import vikoba.service.contribution.dto.SharePurchaseRequestResponse;
 import vikoba.service.contribution.entity.SharePurchaseRequestStatus;
@@ -67,5 +69,15 @@ public class SharePurchaseRequestController {
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "inline")
                 .contentType(MediaType.parseMediaType(contentType == null ? "application/octet-stream" : contentType))
                 .body(proof);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> badRequest(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(ApiResponse.error(exception.getMessage()));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> forbidden(AccessDeniedException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(exception.getMessage()));
     }
 }

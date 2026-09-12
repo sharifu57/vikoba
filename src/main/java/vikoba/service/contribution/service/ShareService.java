@@ -18,7 +18,6 @@ import vikoba.service.organization.repository.GroupSettingsRepository;
 import vikoba.service.organization.repository.VikobaGroupRepository;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
