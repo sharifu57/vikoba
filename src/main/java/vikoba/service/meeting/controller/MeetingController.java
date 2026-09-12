@@ -2,11 +2,14 @@ package vikoba.service.meeting.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
 import vikoba.service.common.response.ApiResponse;
 import vikoba.service.meeting.dto.AttendanceRecord;
 import vikoba.service.meeting.dto.CreateMeetingRequest;
 import vikoba.service.meeting.dto.MeetingResponse;
+import vikoba.service.meeting.dto.MeetingMinutesRequest;
+import vikoba.service.meeting.dto.MeetingMinutesResponse;
 import vikoba.service.meeting.service.MeetingService;
 import vikoba.service.organization.dto.GroupWithSettingsResponse;
 import vikoba.service.organization.service.VikobaService;
@@ -29,6 +32,8 @@ public class MeetingController {
             return ResponseEntity.ok(ApiResponse.success("Meeting created successfully.", m));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }
@@ -41,6 +46,8 @@ public class MeetingController {
                     .ok(ApiResponse.success("Meetings retrieved.", meetingService.listMeetingsForGroup(groupId)));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }
@@ -71,6 +78,8 @@ public class MeetingController {
                     ApiResponse.success("Meetings retrieved.", meetingService.listMeetingsForGroup(primaryGroupId)));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }
@@ -84,6 +93,8 @@ public class MeetingController {
             return ResponseEntity.ok(ApiResponse.success("Attendance recorded.", null));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }
@@ -96,6 +107,8 @@ public class MeetingController {
             return ResponseEntity.ok(ApiResponse.success("Meeting retrieved.", m));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }
@@ -108,6 +121,35 @@ public class MeetingController {
                     ApiResponse.success("Attendance retrieved.", meetingService.listAttendanceForMeeting(meetingId)));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
+    @PutMapping("/meetings/{id}/minutes")
+    public ResponseEntity<ApiResponse<MeetingMinutesResponse>> saveMinutes(@PathVariable("id") Long meetingId,
+            @RequestBody MeetingMinutesRequest request) {
+        try {
+            return ResponseEntity.ok(ApiResponse.success("Meeting minutes saved.", meetingService.saveMinutes(meetingId, request)));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/meetings/{id}/minutes")
+    public ResponseEntity<ApiResponse<MeetingMinutesResponse>> getMinutes(@PathVariable("id") Long meetingId) {
+        try {
+            return ResponseEntity.ok(ApiResponse.success("Meeting minutes retrieved.", meetingService.getMinutes(meetingId)));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
         }

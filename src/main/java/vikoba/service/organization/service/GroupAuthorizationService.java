@@ -58,6 +58,19 @@ public class GroupAuthorizationService {
         throw new AccessDeniedException("Only a group admin, chairperson, or member manager can manage members");
     }
 
+    /** Attendance and meeting scheduling belong to elected group leadership or delegated meeting managers. */
+    @Transactional(readOnly = true)
+    public void requireMeetingManagementAccess(Long groupId) {
+        List<MemberRole> roles = currentRoles(groupId);
+        boolean isGroupLeader = roles.stream().anyMatch(role -> role.getRole() == GroupRole.GROUP_ADMIN
+                || role.getRole() == GroupRole.GROUP_CHAIRMAN
+                || role.getRole() == GroupRole.CHAIRPERSON);
+        if (isGroupLeader || hasPermission(groupId, "MEETING_MANAGE")) {
+            return;
+        }
+        throw new AccessDeniedException("Only a group admin, chairperson, or meeting manager can manage meetings");
+    }
+
     @Transactional(readOnly = true)
     public boolean hasPermission(Long groupId, String permission) {
         if (currentRoles(groupId).stream().anyMatch(memberRole -> memberRole.getRole() == GroupRole.GROUP_ADMIN)) {
