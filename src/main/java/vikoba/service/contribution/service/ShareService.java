@@ -100,9 +100,7 @@ public class ShareService {
         ShareProduct product = getOrCreateProduct(groupId);
         GroupMember member = getMemberInGroup(request.getGroupMemberId(), groupId);
         int quantity = resolveQuantity(request.getQuantity(), request.getAmount(), product.getSharePrice());
-        BigDecimal amount = request.getAmount() != null && request.getAmount().compareTo(BigDecimal.ZERO) > 0
-                ? request.getAmount()
-                : product.getSharePrice().multiply(BigDecimal.valueOf(quantity));
+        BigDecimal amount = product.getSharePrice().multiply(BigDecimal.valueOf(quantity));
         BigDecimal minimum = getSettings(groupId).getMinimumSharePurchaseAmount();
         if (minimum != null && amount.compareTo(minimum) < 0) {
             throw new IllegalArgumentException("The minimum share purchase amount is " + minimum.toPlainString());
@@ -125,7 +123,7 @@ public class ShareService {
             jamiiPayment.setAmount(request.getJamiiAmount());
             jamiiPayment.setPaymentMethod(request.getPaymentMethod());
             jamiiPayment.setReference(saved.getReference() + "-JAMII");
-            jamiiPayment.setAllocationType(PaymentAllocationType.SOCIAL_FUND.name());
+            jamiiPayment.setAllocationType(PaymentAllocationType.JAMII_SHARE_PAYMENT.name());
             jamiiPayment.setAllocationReferenceId(saved.getId());
             jamiiPayment.setDescription("Jamii amount collected with share purchase");
             paymentService.record(groupId, jamiiPayment);
@@ -214,14 +212,16 @@ public class ShareService {
     }
 
     private int resolveQuantity(Integer quantity, BigDecimal amount, BigDecimal unitPrice) {
-        if (quantity != null && quantity > 0) {
-            return quantity;
-        }
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0)
-            throw new IllegalArgumentException("Enter a positive share quantity or amount");
-        int calculatedQuantity = amount.divide(unitPrice, 0, RoundingMode.DOWN).intValueExact();
+            throw new IllegalArgumentException("Enter a positive share amount");
+        BigDecimal[] division = amount.divideAndRemainder(unitPrice);
+        if (division[1].compareTo(BigDecimal.ZERO) != 0)
+            throw new IllegalArgumentException("Share amount must be an exact multiple of the configured share price");
+        int calculatedQuantity = division[0].intValueExact();
         if (calculatedQuantity <= 0)
             throw new IllegalArgumentException("The amount must purchase at least one share");
+        if (quantity != null && quantity > 0 && quantity != calculatedQuantity)
+            throw new IllegalArgumentException("Share quantity must match the amount and configured share price");
         return calculatedQuantity;
     }
 

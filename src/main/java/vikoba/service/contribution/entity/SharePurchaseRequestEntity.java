@@ -33,6 +33,10 @@ public class SharePurchaseRequestEntity {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
 
+    @Column(name = "jamii_amount", nullable = false, precision = 19, scale = 2)
+    @Builder.Default
+    private BigDecimal jamiiAmount = BigDecimal.ZERO;
+
     @Column(nullable = false, length = 40)
     private String paymentMethod;
 
@@ -63,4 +67,10 @@ public class SharePurchaseRequestEntity {
     private LocalDateTime submittedAt;
 
     private LocalDateTime reviewedAt;
+
+    @Column(name = "accountant_approved_at")
+    private LocalDateTime accountantApprovedAt;
+
+    @Column(name = "chair_approved_at")
+    private LocalDateTime chairApprovedAt;
 }

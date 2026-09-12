@@ -16,6 +16,8 @@ import vikoba.service.organization.repository.GroupMemberRepository;
 import vikoba.service.organization.repository.GroupSettingsRepository;
 import vikoba.service.organization.repository.VikobaGroupRepository;
 import vikoba.service.organization.service.GroupAuthorizationService;
+import vikoba.service.common.enums.GroupRole;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -35,27 +37,33 @@ public class SharePurchaseRequestService {
     private final ShareService shareService;
 
     @Transactional
-    public SharePurchaseRequestResponse submit(Long groupId, Long groupMemberId, BigDecimal amount,
+    public SharePurchaseRequestResponse submit(Long groupId, BigDecimal amount,
             Integer quantity, String paymentMethod, String paymentReference, String proofText,
             MultipartFile proofFile) {
-        authorizationService.requireSelfOrPermission(groupId, groupMemberId, "SHARE_MANAGE");
-        GroupMember member = groupMemberRepository.findById(groupMemberId)
-                .orElseThrow(() -> new IllegalArgumentException("Group member not found"));
-        if (!member.getGroup().getId().equals(groupId))
-            throw new IllegalArgumentException("Member does not belong to this group");
+        GroupMember member = authorizationService.requireCurrentMembership(groupId);
         if (amount == null || amount.signum() <= 0)
             throw new IllegalArgumentException("Enter a positive amount");
+        requireProof(proofFile);
 
-        BigDecimal unitPrice = groupSettingsRepository.findByGroupId(groupId)
+        var settings = groupSettingsRepository.findByGroupId(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group settings not found"))
-                .getSharePrice();
+                ;
+        BigDecimal unitPrice = settings.getSharePrice();
         if (unitPrice == null || unitPrice.signum() <= 0)
             throw new IllegalArgumentException("Share price is not configured for this group");
-        int resolvedQuantity = quantity != null && quantity > 0
-                ? quantity
-                : amount.divide(unitPrice, 0, RoundingMode.DOWN).intValue();
+        BigDecimal minimum = settings.getMinimumSharePurchaseAmount();
+        if (minimum != null && amount.compareTo(minimum) < 0)
+            throw new IllegalArgumentException("The minimum share purchase amount is " + minimum.toPlainString());
+        BigDecimal[] division = amount.divideAndRemainder(unitPrice);
+        if (division[1].compareTo(BigDecimal.ZERO) != 0)
+            throw new IllegalArgumentException("Share amount must be an exact multiple of the configured share price");
+        int resolvedQuantity = division[0].intValueExact();
         if (resolvedQuantity <= 0)
             throw new IllegalArgumentException("The amount must purchase at least one share");
+        if (quantity != null && quantity > 0 && quantity != resolvedQuantity)
+            throw new IllegalArgumentException("Share quantity must match the amount and configured share price");
+        BigDecimal jamiiAmount = settings.getJamiiContributionPerSharePayment() == null
+                ? BigDecimal.ZERO : settings.getJamiiContributionPerSharePayment();
 
         ShareProduct product = shareProductRepository.findByGroupIdAndCode(groupId, "STANDARD")
                 .orElseGet(() -> shareProductRepository.save(ShareProduct.builder()
@@ -63,18 +71,16 @@ public class SharePurchaseRequestService {
                                 .orElseThrow(() -> new IllegalArgumentException("Group not found")))
                         .code("STANDARD").name("Group Share").sharePrice(unitPrice).active(true).build()));
         SharePurchaseRequestEntity entity = SharePurchaseRequestEntity.builder()
-                .groupMember(member).shareProduct(product).quantity(resolvedQuantity).amount(amount)
+                .groupMember(member).shareProduct(product).quantity(resolvedQuantity).amount(amount).jamiiAmount(jamiiAmount)
                 .paymentMethod(paymentMethod == null || paymentMethod.isBlank() ? "CASH" : paymentMethod)
                 .paymentReference(blankToNull(paymentReference)).proofText(blankToNull(proofText))
                 .submittedAt(LocalDateTime.now()).build();
-        if (proofFile != null && !proofFile.isEmpty()) {
-            try {
-                entity.setProofFile(proofFile.getBytes());
-                entity.setProofFileName(proofFile.getOriginalFilename());
-                entity.setProofContentType(proofFile.getContentType());
-            } catch (IOException ex) {
-                throw new IllegalArgumentException("Unable to read the proof file");
-            }
+        try {
+            entity.setProofFile(proofFile.getBytes());
+            entity.setProofFileName(proofFile.getOriginalFilename());
+            entity.setProofContentType(proofFile.getContentType());
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("Unable to read the proof file");
         }
         return map(requestRepository.save(entity));
     }
@@ -94,12 +100,35 @@ public class SharePurchaseRequestService {
         SharePurchaseRequestEntity request = findInGroup(groupId, requestId);
         if (request.getStatus() != SharePurchaseRequestStatus.PENDING)
             throw new IllegalArgumentException("Only pending requests can be approved");
+        GroupMember reviewer = authorizationService.requireCurrentMembership(groupId);
+        if (reviewer.getId().equals(request.getGroupMember().getId()))
+            throw new IllegalArgumentException("You cannot approve your own share purchase request");
+
+        boolean isAdmin = authorizationService.hasRole(groupId, GroupRole.GROUP_ADMIN);
+        boolean isAccountant = authorizationService.hasRole(groupId, GroupRole.ACCOUNTANT)
+                || authorizationService.hasPermission(groupId, "SHARE_PURCHASE_APPROVE");
+        boolean isChair = authorizationService.hasRole(groupId, GroupRole.GROUP_CHAIRMAN)
+                || authorizationService.hasRole(groupId, GroupRole.CHAIRPERSON);
+        LocalDateTime now = LocalDateTime.now();
+        if (isAdmin) {
+            request.setAccountantApprovedAt(now);
+            request.setChairApprovedAt(now);
+        } else {
+            if (isAccountant && request.getAccountantApprovedAt() == null)
+                request.setAccountantApprovedAt(now);
+            if (isChair && request.getChairApprovedAt() == null)
+                request.setChairApprovedAt(now);
+        }
+        if (request.getAccountantApprovedAt() == null || request.getChairApprovedAt() == null)
+            return map(requestRepository.save(request));
+
         var purchase = new vikoba.service.contribution.dto.SharePurchaseRequest();
         purchase.setGroupMemberId(request.getGroupMember().getId());
         purchase.setQuantity(request.getQuantity());
         purchase.setAmount(request.getAmount());
         purchase.setPaymentMethod(request.getPaymentMethod());
         purchase.setReference(request.getPaymentReference());
+        purchase.setJamiiAmount(request.getJamiiAmount());
         shareService.purchase(groupId, purchase);
         request.setStatus(SharePurchaseRequestStatus.APPROVED);
         request.setReviewedAt(LocalDateTime.now());
@@ -112,6 +141,8 @@ public class SharePurchaseRequestService {
         SharePurchaseRequestEntity request = findInGroup(groupId, requestId);
         if (request.getStatus() != SharePurchaseRequestStatus.PENDING)
             throw new IllegalArgumentException("Only pending requests can be rejected");
+        if (authorizationService.requireCurrentMembership(groupId).getId().equals(request.getGroupMember().getId()))
+            throw new IllegalArgumentException("You cannot reject your own share purchase request");
         request.setStatus(SharePurchaseRequestStatus.REJECTED);
         request.setReviewReason(blankToNull(reason));
         request.setReviewedAt(LocalDateTime.now());
@@ -133,7 +164,13 @@ public class SharePurchaseRequestService {
     }
 
     private void assertReviewer(Long groupId) {
-        authorizationService.requireWorkflowAction(groupId, "SHARE_PURCHASE_PROOF", "SHARE_PURCHASE_APPROVE");
+        boolean allowed = authorizationService.hasRole(groupId, GroupRole.GROUP_ADMIN)
+                || authorizationService.hasRole(groupId, GroupRole.ACCOUNTANT)
+                || authorizationService.hasRole(groupId, GroupRole.GROUP_CHAIRMAN)
+                || authorizationService.hasRole(groupId, GroupRole.CHAIRPERSON)
+                || authorizationService.hasPermission(groupId, "SHARE_PURCHASE_APPROVE");
+        if (!allowed)
+            throw new AccessDeniedException("You do not have permission to review share purchase proofs");
     }
 
     private SharePurchaseRequestEntity findInGroup(Long groupId, Long requestId) {
@@ -149,15 +186,26 @@ public class SharePurchaseRequestService {
         return SharePurchaseRequestResponse.builder().id(request.getId()).groupMemberId(member.getId())
                 .memberName(member.getMember().getFirstName() + " " + member.getMember().getLastName())
                 .membershipNumber(member.getMembershipNumber()).quantity(request.getQuantity())
-                .amount(request.getAmount())
+                .amount(request.getAmount()).jamiiAmount(request.getJamiiAmount())
                 .paymentMethod(request.getPaymentMethod()).paymentReference(request.getPaymentReference())
                 .proofText(request.getProofText()).proofFileName(request.getProofFileName())
                 .proofContentType(request.getProofContentType()).hasProofFile(request.getProofFile() != null)
                 .status(request.getStatus().name()).reviewReason(request.getReviewReason())
-                .submittedAt(request.getSubmittedAt()).reviewedAt(request.getReviewedAt()).build();
+                .submittedAt(request.getSubmittedAt()).reviewedAt(request.getReviewedAt())
+                .accountantApprovedAt(request.getAccountantApprovedAt()).chairApprovedAt(request.getChairApprovedAt()).build();
     }
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private void requireProof(MultipartFile proofFile) {
+        if (proofFile == null || proofFile.isEmpty())
+            throw new IllegalArgumentException("Attach a payment receipt or message screenshot as proof");
+        if (proofFile.getSize() > 5 * 1024 * 1024)
+            throw new IllegalArgumentException("Payment proof must be 5 MB or smaller");
+        String contentType = proofFile.getContentType();
+        if (contentType == null || !(contentType.startsWith("image/") || "application/pdf".equals(contentType)))
+            throw new IllegalArgumentException("Payment proof must be an image or PDF receipt");
     }
 }

@@ -39,6 +39,11 @@ public class GroupAuthorizationService {
     }
 
     @Transactional(readOnly = true)
+    public GroupMember requireCurrentMembership(Long groupId) {
+        return currentMembership(groupId);
+    }
+
+    @Transactional(readOnly = true)
     public void requirePermission(Long groupId, String permission) {
         if (!hasPermission(groupId, permission)) {
             throw new AccessDeniedException("You do not have " + permission + " permission for this group");

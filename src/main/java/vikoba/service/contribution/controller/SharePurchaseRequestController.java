@@ -23,7 +23,6 @@ public class SharePurchaseRequestController {
     @PostMapping(value = "/group/{groupId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<SharePurchaseRequestResponse>> submit(
             @PathVariable Long groupId,
-            @RequestParam Long groupMemberId,
             @RequestParam java.math.BigDecimal amount,
             @RequestParam(required = false) Integer quantity,
             @RequestParam String paymentMethod,
@@ -31,7 +30,7 @@ public class SharePurchaseRequestController {
             @RequestParam(required = false) String proofText,
             @RequestPart(required = false) MultipartFile proofFile) {
         return ResponseEntity.ok(ApiResponse.success("Share purchase proof submitted for review.",
-                service.submit(groupId, groupMemberId, amount, quantity, paymentMethod, paymentReference, proofText,
+                service.submit(groupId, amount, quantity, paymentMethod, paymentReference, proofText,
                         proofFile)));
     }
 

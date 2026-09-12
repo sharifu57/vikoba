@@ -15,6 +15,7 @@ public class SharePurchaseRequestResponse {
     private String membershipNumber;
     private Integer quantity;
     private BigDecimal amount;
+    private BigDecimal jamiiAmount;
     private String paymentMethod;
     private String paymentReference;
     private String proofText;
@@ -25,4 +26,6 @@ public class SharePurchaseRequestResponse {
     private String reviewReason;
     private LocalDateTime submittedAt;
     private LocalDateTime reviewedAt;
+    private LocalDateTime accountantApprovedAt;
+    private LocalDateTime chairApprovedAt;
 }
