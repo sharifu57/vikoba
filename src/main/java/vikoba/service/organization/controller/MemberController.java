@@ -43,6 +43,12 @@ public class MemberController {
         }
     }
 
+    @GetMapping("/members/group/{groupId}/my-access")
+    public ResponseEntity<ApiResponse<MemberResponse>> getMyGroupAccess(@PathVariable Long groupId) {
+        return ResponseEntity.ok(ApiResponse.success("Current group access retrieved successfully.",
+                memberService.getMyGroupAccess(groupId)));
+    }
+
     @GetMapping("/members/roles")
     public ResponseEntity<ApiResponse<List<MemberRoleOptionResponse>>> getMemberRoles() {
         return ResponseEntity

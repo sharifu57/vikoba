@@ -131,10 +131,8 @@ public class SharePurchaseRequestService {
         if (next < 0) throw new IllegalArgumentException("No independent approval step is available. Ask a group admin to configure another reviewer.");
         var current = steps.get(next);
         GroupRole requiredRole = GroupRole.valueOf(current.role());
-        boolean matches = authorizationService.hasRole(groupId, requiredRole)
-                || (requiredRole == GroupRole.GROUP_CHAIRMAN && authorizationService.hasRole(groupId, GroupRole.CHAIRPERSON))
-                || (requiredRole == GroupRole.CHAIRPERSON && authorizationService.hasRole(groupId, GroupRole.GROUP_CHAIRMAN));
-        if (!matches) throw new AccessDeniedException("Waiting for " + current.label() + " (" + current.role() + ")");
+        if (!canApproveCurrentStep(groupId, requiredRole))
+            throw new AccessDeniedException("Waiting for " + current.label() + " (" + current.role() + ")");
         LocalDateTime now = LocalDateTime.now();
         steps.set(next, new ShareApprovalStep(current.role(), current.label(), now.toString(), reviewer.getId(), false));
         request.setApprovalStepsJson(writeSteps(steps));
@@ -218,11 +216,28 @@ public class SharePurchaseRequestService {
         return request;
     }
 
+    private boolean canApproveCurrentStep(Long groupId, GroupRole requiredRole) {
+        // A group admin has an explicit override for the current step, not for the
+        // entire workflow. Other reviewers must hold its configured role.
+        return (authorizationService.hasRole(groupId, GroupRole.GROUP_ADMIN)
+                && authorizationService.hasPermission(groupId, "SHARE_PURCHASE_APPROVE"))
+                || authorizationService.hasRole(groupId, requiredRole)
+                || (requiredRole == GroupRole.GROUP_CHAIRMAN && authorizationService.hasRole(groupId, GroupRole.CHAIRPERSON))
+                || (requiredRole == GroupRole.CHAIRPERSON && authorizationService.hasRole(groupId, GroupRole.GROUP_CHAIRMAN));
+    }
+
     private SharePurchaseRequestResponse map(SharePurchaseRequestEntity request) {
         GroupMember member = request.getGroupMember();
         var steps = readSteps(request);
         var next = steps.stream().filter(step -> !step.skipped() && step.approvedAt() == null).findFirst().orElse(null);
+        Long groupId = member.getGroup().getId();
+        boolean independentReviewer = !authorizationService.requireCurrentMembership(groupId).getId().equals(member.getId());
+        boolean pending = request.getStatus() == SharePurchaseRequestStatus.PENDING;
+        boolean canApprove = pending && independentReviewer && next != null
+                && canApproveCurrentStep(groupId, GroupRole.valueOf(next.role()));
+        boolean canReject = pending && independentReviewer && (canApprove || authorizationService.hasPermission(groupId, "SHARE_PURCHASE_APPROVE"));
         return SharePurchaseRequestResponse.builder().id(request.getId())
+                .canApprove(canApprove).canReject(canReject)
                 .approvalSteps(steps).currentStepRole(next == null ? null : next.role())
                 .currentStepLabel(next == null ? null : next.label()).groupMemberId(member.getId())
                 .memberName(member.getMember().getFirstName() + " " + member.getMember().getLastName())

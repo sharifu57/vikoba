@@ -13,6 +13,8 @@ public class SharePurchaseRequestResponse {
     private java.util.List<ShareApprovalStep> approvalSteps;
     private String currentStepRole;
     private String currentStepLabel;
+    private boolean canApprove;
+    private boolean canReject;
     private Long groupMemberId;
     private String memberName;
     private String membershipNumber;

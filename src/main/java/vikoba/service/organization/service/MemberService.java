@@ -286,6 +286,11 @@ public class MemberService {
                                                 memberRole));
         }
 
+        @Transactional(readOnly = true)
+        public MemberResponse getMyGroupAccess(Long groupId) {
+                return toResponse(authorizationService.requireCurrentMembership(groupId));
+        }
+
         public List<MemberRoleOptionResponse> getMemberRoles() {
                 return roleRepository.findAll().stream()
                                 .filter(role -> isGroupRole(role.getName()))
