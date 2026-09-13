@@ -1,11 +1,17 @@
 package vikoba.service.loan.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
+import java.util.Optional;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.Query;
 import vikoba.service.loan.entity.Loan;
 
 public interface LoanRepository extends JpaRepository<Loan, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from Loan l where l.id = :id")
+    Optional<Loan> findLockedById(@Param("id") Long id);
     @Query("""
                     SELECT l FROM Loan l
                     WHERE l.groupMember.id = :groupMemberId

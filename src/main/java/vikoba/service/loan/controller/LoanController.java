@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import vikoba.service.common.response.ApiResponse;
 import vikoba.service.loan.dto.*;
 import vikoba.service.loan.service.LoanWorkflowService;
+import vikoba.service.organization.dto.ShareApprovalStepConfig;
 import java.util.*;
 
 @RestController
@@ -56,6 +57,29 @@ public class LoanController {
     public ResponseEntity<ApiResponse<LoanResponse>> apply(@PathVariable Long groupId, @RequestBody LoanRequest r) {
         return ResponseEntity
                 .ok(ApiResponse.success("Loan application submitted successfully.", service.apply(groupId, r)));
+    }
+
+    @GetMapping("/approval-config")
+    public ResponseEntity<ApiResponse<List<ShareApprovalStepConfig>>> approvalConfig(@PathVariable Long groupId) {
+        return ResponseEntity.ok(ApiResponse.success("Loan approval workflow retrieved.", service.approvalConfig(groupId)));
+    }
+
+    @PutMapping("/approval-config")
+    public ResponseEntity<ApiResponse<List<ShareApprovalStepConfig>>> configureApproval(@PathVariable Long groupId,
+            @RequestBody List<ShareApprovalStepConfig> steps) {
+        return ResponseEntity.ok(ApiResponse.success("Loan approval workflow saved.", service.configureApproval(groupId, steps)));
+    }
+
+    @PostMapping("/{loanId}/return")
+    public ResponseEntity<ApiResponse<LoanResponse>> returnForReview(@PathVariable Long groupId, @PathVariable Long loanId,
+            @RequestBody LoanDecisionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Loan returned to previous reviewer.", service.returnForReview(groupId, loanId, request)));
+    }
+
+    @PostMapping("/{loanId}/cancel")
+    public ResponseEntity<ApiResponse<LoanResponse>> cancel(@PathVariable Long groupId, @PathVariable Long loanId,
+            @RequestBody LoanDecisionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Loan application cancelled.", service.cancel(groupId, loanId, request)));
     }
 
     @PostMapping("/{loanId}/approve")

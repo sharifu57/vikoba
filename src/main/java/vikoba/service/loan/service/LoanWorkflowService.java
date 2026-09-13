@@ -19,6 +19,8 @@ import java.time.*;
 import java.util.*;
 import vikoba.service.notification.SmsNotificationService;
 import vikoba.service.organization.service.GroupAuthorizationService;
+import vikoba.service.organization.service.LoanApprovalWorkflowService;
+import vikoba.service.organization.dto.ShareApprovalStepConfig;
 import org.springframework.security.access.AccessDeniedException;
 
 @Service
@@ -37,6 +39,9 @@ public class LoanWorkflowService {
     private final GroupSettingsRepository groupSettingsRepository;
     private final SmsNotificationService smsNotificationService;
     private final GroupAuthorizationService authorizationService;
+    private final LoanApprovalWorkflowService loanApprovalWorkflow;
+    private final LoanApprovalStepRepository approvalSteps;
+    private final LoanApprovalEventRepository approvalEvents;
 
     private static final List<LoanStatus> OPEN_STATUSES = List.of(LoanStatus.PENDING, LoanStatus.UNDER_REVIEW,
             LoanStatus.APPROVED, LoanStatus.DISBURSED, LoanStatus.ACTIVE, LoanStatus.DEFAULTED);
@@ -336,38 +341,125 @@ public class LoanWorkflowService {
         return response(loan);
     }
 
+    @Transactional(readOnly = true)
+    public List<ShareApprovalStepConfig> approvalConfig(Long groupId) {
+        authorizationService.requireMembership(groupId);
+        return loanApprovalWorkflow.get(groupId);
+    }
+
+    @Transactional
+    public List<ShareApprovalStepConfig> configureApproval(Long groupId, List<ShareApprovalStepConfig> steps) {
+        authorizationService.requirePermission(groupId, "WORKFLOW_MANAGE");
+        loanApprovalWorkflow.configure(authorizationService.requireCurrentMembership(groupId).getGroup(), steps);
+        return loanApprovalWorkflow.get(groupId);
+    }
+
+    private List<LoanApprovalStep> steps(Loan loan) {
+        var saved = approvalSteps.findByLoanIdOrderByStepOrderAsc(loan.getId());
+        if (!saved.isEmpty() || loan.getStatus() != LoanStatus.UNDER_REVIEW) return saved;
+        var config = loanApprovalWorkflow.get(loan.getGroupMember().getGroup().getId());
+        for (int i = 0; i < config.size(); i++) {
+            var item = config.get(i);
+            approvalSteps.save(LoanApprovalStep.builder().loan(loan).stepOrder(i + 1)
+                    .requiredRole(item.role()).label(item.label()).build());
+        }
+        return approvalSteps.findByLoanIdOrderByStepOrderAsc(loan.getId());
+    }
+
+    private LoanApprovalStep currentStep(Loan loan) {
+        return steps(loan).stream().filter(step -> step.getApprovedAt() == null).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("All review steps are already complete."));
+    }
+
+    private void requireReviewer(Long groupId, LoanApprovalStep step, Loan loan) {
+        var actor = authorizationService.requireCurrentMembership(groupId);
+        if (actor.getId().equals(loan.getGroupMember().getId()))
+            throw new AccessDeniedException("You cannot approve your own loan.");
+        var role = step.getRequiredRole();
+        boolean matches = authorizationService.hasRole(groupId, role)
+                || (role == GroupRole.GROUP_CHAIRMAN && authorizationService.hasRole(groupId, GroupRole.CHAIRPERSON))
+                || (role == GroupRole.CHAIRPERSON && authorizationService.hasRole(groupId, GroupRole.GROUP_CHAIRMAN));
+        if (!matches) throw new AccessDeniedException("This loan is waiting for the " + step.getLabel() + ".");
+    }
+
+    private void event(Loan loan, Integer stepOrder, String action, String reason, Long actorId) {
+        approvalEvents.save(LoanApprovalEvent.builder().loan(loan).stepOrder(stepOrder).action(action)
+                .reason(reason).actorMemberId(actorId).actedAt(LocalDateTime.now()).build());
+    }
+
     @Transactional
     public LoanResponse approve(Long groupId, Long id) {
-        authorizationService.requirePermission(groupId, "LOAN_MANAGE");
-        Loan l = require(id, groupId);
+        Loan l = requireForUpdate(id, groupId);
         if (l.getStatus() != LoanStatus.UNDER_REVIEW)
             throw new IllegalArgumentException("Wait for all guarantors to accept before approving this loan.");
         int required = settings.findByGroupId(groupId).map(GroupSettings::getRequiredLoanGuarantors).orElse(0);
         List<LoanGuarantor> selected = guarantors.findByLoanId(id);
         if (selected.size() != required || selected.stream().anyMatch(item -> item.getStatus() != GuarantorStatus.ACCEPTED))
             throw new IllegalArgumentException("All required guarantors must accept before loan approval.");
-        l.setStatus(LoanStatus.APPROVED);
-        l.setApprovalDate(LocalDate.now());
+        LoanApprovalStep step = currentStep(l);
+        requireReviewer(groupId, step, l);
+        Long actorId = authorizationService.requireCurrentMembership(groupId).getId();
+        step.setApprovedAt(LocalDateTime.now());
+        step.setApprovedByMemberId(actorId);
+        approvalSteps.save(step);
+        event(l, step.getStepOrder(), "APPROVED", null, actorId);
+        if (approvalSteps.findByLoanIdOrderByStepOrderAsc(id).stream().allMatch(item -> item.getApprovedAt() != null)) {
+            l.setApprovalDate(LocalDate.now());
+            activateLoan(l);
+        }
         return response(l);
     }
 
     @Transactional
-    public LoanResponse reject(Long groupId, Long id, LoanDecisionRequest r) {
-        authorizationService.requirePermission(groupId, "LOAN_MANAGE");
-        Loan l = require(id, groupId);
-        if (l.getStatus() != LoanStatus.PENDING && l.getStatus() != LoanStatus.UNDER_REVIEW)
-            throw new IllegalArgumentException("Only pending applications can be rejected.");
+    public LoanResponse returnForReview(Long groupId, Long id, LoanDecisionRequest request) {
+        Loan l = requireForUpdate(id, groupId);
+        if (l.getStatus() != LoanStatus.UNDER_REVIEW) throw new IllegalArgumentException("Loan is not under review.");
+        var all = steps(l);
+        var current = currentStep(l);
+        requireReviewer(groupId, current, l);
+        if (current.getStepOrder() == 1) throw new IllegalArgumentException("The first reviewer cannot return to an earlier step; reject or cancel this application instead.");
+        var previous = all.get(current.getStepOrder() - 2);
+        previous.setApprovedAt(null);
+        previous.setApprovedByMemberId(null);
+        approvalSteps.save(previous);
+        event(l, current.getStepOrder(), "RETURNED", required(request.getRejectionReason(), "return reason"),
+                authorizationService.requireCurrentMembership(groupId).getId());
+        return response(l);
+    }
+
+    @Transactional
+    public LoanResponse reject(Long groupId, Long id, LoanDecisionRequest request) {
+        Loan l = requireForUpdate(id, groupId);
+        if (l.getStatus() != LoanStatus.UNDER_REVIEW) throw new IllegalArgumentException("Only applications under review can be rejected.");
+        var step = currentStep(l);
+        requireReviewer(groupId, step, l);
+        String reason = required(request.getRejectionReason(), "rejection reason");
         l.setStatus(LoanStatus.REJECTED);
-        l.setRejectionReason(required(r.getRejectionReason(), "rejection reason"));
+        l.setRejectionReason(reason);
+        event(l, step.getStepOrder(), "REJECTED", reason, authorizationService.requireCurrentMembership(groupId).getId());
+        return response(l);
+    }
+
+    @Transactional
+    public LoanResponse cancel(Long groupId, Long id, LoanDecisionRequest request) {
+        Loan l = requireForUpdate(id, groupId);
+        if (l.getStatus() != LoanStatus.PENDING && l.getStatus() != LoanStatus.UNDER_REVIEW)
+            throw new IllegalArgumentException("Only an undistributed application can be cancelled.");
+        var actor = authorizationService.requireCurrentMembership(groupId);
+        if (!actor.getId().equals(l.getGroupMember().getId())) requireReviewer(groupId, currentStep(l), l);
+        l.setStatus(LoanStatus.CANCELLED);
+        String reason = request == null ? null : request.getRejectionReason();
+        l.setRejectionReason(reason);
+        event(l, null, "CANCELLED", reason, actor.getId());
         return response(l);
     }
 
     @Transactional
     public LoanResponse disburse(Long groupId, Long id) {
-        authorizationService.requirePermission(groupId, "LOAN_MANAGE");
-        Loan l = require(id, groupId);
-        if (l.getStatus() != LoanStatus.APPROVED)
-            throw new IllegalArgumentException("Approve the application before disbursement.");
+        throw new IllegalArgumentException("Disbursement happens automatically after the final loan approval.");
+    }
+
+    private void activateLoan(Loan l) {
         LocalDate endDate = l.getGroupMember().getGroup().getEndDate();
         if (endDate == null || LocalDate.now().plusMonths(l.getDurationMonths()).isAfter(endDate))
             throw new IllegalArgumentException("The repayment schedule would extend beyond the Kikoba end date. Review this loan before disbursement.");
@@ -378,7 +470,6 @@ public class LoanWorkflowService {
         smsNotificationService.send(l.getGroupMember().getMember().getPhone(), "VIKOBA360: Hongera! Mkopo "
                 + l.getLoanNumber() + " umetolewa kwa TZS " + l.getPrincipalAmount().toPlainString()
                 + ". Angalia ratiba ya marejesho kwenye akaunti yako.");
-        return response(l);
     }
 
     @Transactional
@@ -456,6 +547,11 @@ public class LoanWorkflowService {
                                 .maxDurationMonths(s.getDefaultLoanDurationMonths()).active(true).build()));
     }
 
+    private Loan requireForUpdate(Long id, Long gid) {
+        return loans.findLockedById(id).filter(l -> l.getGroupMember().getGroup().getId().equals(gid))
+                .orElseThrow(() -> new IllegalArgumentException("Loan not found in this group."));
+    }
+
     private Loan require(Long id, Long gid) {
         return loans.findById(id).filter(l -> l.getGroupMember().getGroup().getId().equals(gid))
                 .orElseThrow(() -> new IllegalArgumentException("Loan not found in this group."));
@@ -500,6 +596,10 @@ public class LoanWorkflowService {
                 .progress(total.signum() == 0 ? 0
                         : paid.multiply(BigDecimal.valueOf(100)).divide(total, 0, RoundingMode.DOWN).intValue())
                 .consentAcceptedAt(l.getConsentAcceptedAt())
+                .approvalSteps(approvalSteps.findByLoanIdOrderByStepOrderAsc(l.getId()).stream().map(item ->
+                        new LoanApprovalStepResponse(item.getStepOrder(), item.getRequiredRole().name(), item.getLabel(), item.getApprovedAt(), item.getApprovedByMemberId())).toList())
+                .approvalEvents(approvalEvents.findByLoanIdOrderByActedAtAscIdAsc(l.getId()).stream().map(item ->
+                        new LoanApprovalEventResponse(item.getStepOrder() == null ? 0 : item.getStepOrder(), item.getAction(), item.getActorMemberId(), item.getReason(), item.getActedAt())).toList())
                 .guarantors(guarantors.findByLoanId(l.getId()).stream().map(item -> new LoanGuarantorOption(
                         item.getId(), item.getGroupMember().getMember().getFirstName() + " " + item.getGroupMember().getMember().getLastName(),
                         item.getGroupMember().getMember().getPhone(), item.getGroupMember().getMember().getAddress(),

@@ -52,4 +52,6 @@ public class LoanResponse {
     private Integer progress;
     private LocalDateTime consentAcceptedAt;
     private List<LoanGuarantorOption> guarantors;
+    private List<LoanApprovalStepResponse> approvalSteps;
+    private List<LoanApprovalEventResponse> approvalEvents;
 }
