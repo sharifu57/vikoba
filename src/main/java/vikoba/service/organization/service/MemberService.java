@@ -318,7 +318,10 @@ public class MemberService {
                 }
                 User user = userRepository.findByPhone(membership.getMember().getPhone()).orElse(null);
                 assignRoles(membership, user, requestedRoles, LocalDate.now());
-                memberPermissionRepository.deleteByGroupMemberId(groupMemberId);
+                // Flush removals before inserting replacements: the table has a unique
+                // (group_member_id, permission_id) constraint.
+                memberPermissionRepository.deleteAllInBatch(
+                                memberPermissionRepository.findByGroupMemberId(groupMemberId));
                 for (String permissionName : request == null || request.getPermissions() == null ? List.<String>of() : request.getPermissions()) {
                         Permission permission = permissionRepository.findByName(permissionName.trim().toUpperCase())
                                         .orElseThrow(() -> new IllegalArgumentException("Permission " + permissionName + " is not configured."));

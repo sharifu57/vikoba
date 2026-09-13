@@ -1,5 +1,6 @@
 package vikoba.service.config;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -46,6 +47,8 @@ public class SecurityConfiguration {
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth
+                                                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                                                .requestMatchers("/error").permitAll()
                                                 .requestMatchers("/api/auth/lookup", "/api/auth/register",
                                                                 "/api/auth/verify-otp",
                                                                 "/api/auth/refresh", "/api/auth/resend-otp")

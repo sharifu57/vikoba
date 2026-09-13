@@ -64,6 +64,8 @@ public class MemberController {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to update member access."));
         }
     }
 
