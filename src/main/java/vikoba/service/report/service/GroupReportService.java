@@ -80,7 +80,7 @@ public class GroupReportService {
                 periodContributions.stream().map(ContributionDetailResponse::getPaidAmount).toList());
         BigDecimal paymentIncome = sum(periodPayments.stream().filter(item -> "COMPLETED".equals(item.getStatus()))
                 .map(PaymentResponse::getAmount).toList());
-        BigDecimal expenseTotal = sum(periodExpenses.stream().filter(item -> "APPROVED".equals(item.getStatus()))
+        BigDecimal expenseTotal = sum(periodExpenses.stream().filter(item -> "APPROVED".equals(item.getStatus()) || "PAID".equals(item.getStatus()))
                 .map(ExpenseResponse::getAmount).toList());
         BigDecimal shareCapital = shares.stream()
                 .filter(item -> "PURCHASE".equals(item.getType()) || "TRANSFER_IN".equals(item.getType()))
@@ -125,7 +125,8 @@ public class GroupReportService {
                         0, item.getPaidAmount()));
         payments.forEach(item -> add(totals, item.getPaymentDate() == null ? null : item.getPaymentDate().toLocalDate(),
                 1, item.getAmount()));
-        expenses.forEach(item -> add(totals, item.getExpenseDate(), 2, item.getAmount()));
+        expenses.stream().filter(item -> "APPROVED".equals(item.getStatus()) || "PAID".equals(item.getStatus()))
+                .forEach(item -> add(totals, item.getExpenseDate(), 2, item.getAmount()));
         return totals.entrySet().stream().sorted(Map.Entry.comparingByKey())
                 .map(entry -> GroupReportResponse.MonthlyTotal.builder().month(entry.getKey().toString())
                         .contributions(entry.getValue()[0]).payments(entry.getValue()[1]).expenses(entry.getValue()[2])
@@ -171,7 +172,7 @@ public class GroupReportService {
                 .date(item.getPaymentDate() == null ? null : item.getPaymentDate().toLocalDate().toString())
                 .reference(item.getReference()).memberName(item.getMemberName()).category(item.getAllocationType())
                 .amount(item.getAmount()).status(item.getStatus()).build()));
-        expenses.forEach(item -> rows.add(GroupReportResponse.ActivityRow.builder()
+        expenses.stream().filter(item -> "APPROVED".equals(item.getStatus()) || "PAID".equals(item.getStatus())).forEach(item -> rows.add(GroupReportResponse.ActivityRow.builder()
                 .date(item.getExpenseDate() == null ? null : item.getExpenseDate().toString())
                 .reference(item.getReference()).memberName("Group expense").category(item.getCategoryName())
                 .amount(item.getAmount().negate()).status(item.getStatus()).build()));

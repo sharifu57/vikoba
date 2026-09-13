@@ -53,4 +53,7 @@ public class Expense extends BaseEntity {
 
     @Column(columnDefinition = "TEXT")
     private String rejectionReason;
+
+    @Column(name = "approval_steps_json", columnDefinition = "text")
+    private String approvalStepsJson;
 }

@@ -6,6 +6,7 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Builder
@@ -21,6 +22,9 @@ public class ExpenseResponse {
     private String receiptNumber;
     private String status;
     private String rejectionReason;
+    private List<ExpenseApprovalStep> approvalSteps;
+    private String currentStepLabel;
+    private boolean canApprove;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

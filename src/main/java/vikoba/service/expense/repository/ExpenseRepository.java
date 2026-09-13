@@ -3,6 +3,8 @@ package vikoba.service.expense.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import vikoba.service.expense.entity.Expense;
 
 import java.util.List;
@@ -25,4 +27,8 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
             WHERE e.id = :expenseId AND e.group.id = :groupId
             """)
     Optional<Expense> findByIdAndGroupIdWithCategory(@Param("expenseId") Long expenseId, @Param("groupId") Long groupId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT e FROM Expense e JOIN FETCH e.group JOIN FETCH e.category WHERE e.id = :expenseId AND e.group.id = :groupId")
+    Optional<Expense> findForUpdate(@Param("expenseId") Long expenseId, @Param("groupId") Long groupId);
 }

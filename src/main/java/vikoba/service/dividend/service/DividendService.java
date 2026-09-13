@@ -40,7 +40,7 @@ public class DividendService {
                 .filter(p -> p.getStatus() == vikoba.service.common.enums.PaymentStatus.COMPLETED)
                 .map(Payment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)
                 .subtract(expenses.findByGroupIdWithCategory(groupId).stream()
-                        .filter(e -> e.getStatus() == vikoba.service.common.enums.ExpenseStatus.PAID)
+                        .filter(e -> e.getStatus() == vikoba.service.common.enums.ExpenseStatus.APPROVED || e.getStatus() == vikoba.service.common.enums.ExpenseStatus.PAID)
                         .map(vikoba.service.expense.entity.Expense::getAmount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add));
         BigDecimal unpaidFinePool = fines.findByGroupId(groupId).stream()
