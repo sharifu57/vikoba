@@ -14,7 +14,7 @@ public class ShareTransactionResponse {
     private String memberName;
     private String membershipNumber;
     private String type;
-    private Integer quantity;
+    private BigDecimal quantity;
     private BigDecimal unitPrice;
     private BigDecimal totalAmount;
     private String reference;

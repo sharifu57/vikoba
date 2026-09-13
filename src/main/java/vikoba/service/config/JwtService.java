@@ -80,7 +80,9 @@ public class JwtService {
 
     public boolean isTokenValid(String token) {
         try {
-            return !isTokenExpired(token);
+            Claims claims = extractAllClaims(token);
+            return claims != null && "access".equals(claims.get("type"))
+                    && !claims.getExpiration().before(new Date());
         } catch (Exception e) {
             return false;
         }

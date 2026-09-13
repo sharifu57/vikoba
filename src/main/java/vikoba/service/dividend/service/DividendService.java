@@ -54,29 +54,29 @@ public class DividendService {
             throw new IllegalArgumentException("Dividends already generated for this financial year.");
         var group = groups.findById(groupId).orElseThrow(() -> new IllegalArgumentException("Group not found."));
         var ledger = shares.findLedgerByGroupId(groupId);
-        Map<Long, Integer> balances = new HashMap<>();
+        Map<Long, BigDecimal> balances = new HashMap<>();
         for (var s : ledger) {
-            int q = s.getType() == ShareTransactionType.REDEMPTION || s.getType() == ShareTransactionType.TRANSFER_OUT
-                    ? -s.getQuantity()
+            BigDecimal q = s.getType() == ShareTransactionType.REDEMPTION || s.getType() == ShareTransactionType.TRANSFER_OUT
+                    ? s.getQuantity().negate()
                     : s.getQuantity();
-            balances.merge(s.getGroupMember().getId(), q, Integer::sum);
+            balances.merge(s.getGroupMember().getId(), q, BigDecimal::add);
         }
-        int total = balances.values().stream().mapToInt(v -> Math.max(0, v)).sum();
-        if (total <= 0)
+        BigDecimal total = balances.values().stream().map(v -> v.max(BigDecimal.ZERO)).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (total.signum() <= 0)
             throw new IllegalArgumentException("No eligible shares found.");
         List<Dividend> saved = new ArrayList<>();
         for (var e : balances.entrySet()) {
-            int owned = Math.max(0, e.getValue());
-            if (owned == 0)
+            BigDecimal owned = e.getValue().max(BigDecimal.ZERO);
+            if (owned.signum() == 0)
                 continue;
             var gm = members.findById(e.getKey()).orElseThrow();
             BigDecimal assessed = fines.findByGroupId(groupId).stream().filter(f -> f.getGroupMember().getId().equals(gm.getId())).map(Fine::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal finePaid = fines.findByGroupId(groupId).stream().filter(f -> f.getGroupMember().getId().equals(gm.getId())).map(f -> f.getPaidAmount() == null ? BigDecimal.ZERO : f.getPaidAmount()).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal deduction = assessed.subtract(finePaid).max(BigDecimal.ZERO);
-            BigDecimal gross = profitPool.multiply(BigDecimal.valueOf(owned)).divide(BigDecimal.valueOf(total), 2, RoundingMode.DOWN);
+            BigDecimal gross = profitPool.multiply(owned).divide(total, 2, RoundingMode.DOWN);
             BigDecimal contribution = payments.findByGroupIdWithMember(groupId).stream().filter(p -> p.getGroupMember() != null && p.getGroupMember().getId().equals(gm.getId()) && p.getStatus() == vikoba.service.common.enums.PaymentStatus.COMPLETED).map(Payment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
             saved.add(dividends.save(Dividend.builder().group(group).groupMember(gm).financialYear(year)
-                    .profitPool(profitPool).contributions(contribution).finesAssessed(assessed).finesPaid(finePaid).fineDeduction(deduction).sharesOwned(owned).shareValue(BigDecimal.valueOf(owned)).amount(gross.subtract(deduction).max(BigDecimal.ZERO))
+                    .profitPool(profitPool).contributions(contribution).finesAssessed(assessed).finesPaid(finePaid).fineDeduction(deduction).sharesOwned(owned).shareValue(owned).amount(gross.subtract(deduction).max(BigDecimal.ZERO))
                     .build()));
         }
         return saved.stream().map(this::map).toList();

@@ -60,26 +60,28 @@ public class DashboardService {
             totalContributions = BigDecimal.ZERO;
 
         // Compute net shares: purchases + transfers_in - transfers_out - redemptions
-        Long purchased = entityManager.createQuery(
-                "SELECT COALESCE(SUM(st.quantity), 0) FROM ShareTransaction st WHERE st.shareProduct.group.id = :groupId AND st.type IN :inTypes",
-                Long.class)
+        BigDecimal purchased = entityManager.createQuery(
+                "SELECT SUM(st.quantity) FROM ShareTransaction st WHERE st.shareProduct.group.id = :groupId AND st.type IN :inTypes",
+                BigDecimal.class)
                 .setParameter("groupId", groupId)
                 .setParameter("inTypes", Arrays.asList(ShareTransactionType.PURCHASE, ShareTransactionType.TRANSFER_IN))
                 .getSingleResult();
 
-        Long sold = entityManager.createQuery(
-                "SELECT COALESCE(SUM(st.quantity), 0) FROM ShareTransaction st WHERE st.shareProduct.group.id = :groupId AND st.type IN :outTypes",
-                Long.class)
+        BigDecimal sold = entityManager.createQuery(
+                "SELECT SUM(st.quantity) FROM ShareTransaction st WHERE st.shareProduct.group.id = :groupId AND st.type IN :outTypes",
+                BigDecimal.class)
                 .setParameter("groupId", groupId)
                 .setParameter("outTypes",
                         Arrays.asList(ShareTransactionType.TRANSFER_OUT, ShareTransactionType.REDEMPTION))
                 .getSingleResult();
 
-        BigDecimal totalShares = BigDecimal.valueOf(Math.max(0L, purchased - sold));
+        BigDecimal totalShares = (purchased == null ? BigDecimal.ZERO : purchased)
+                .subtract(sold == null ? BigDecimal.ZERO : sold)
+                .max(BigDecimal.ZERO);
 
         // Sum outstanding loans for the group (disbursed or active)
         BigDecimal totalOutstandingLoans = entityManager.createQuery(
-                "SELECT COALESCE(SUM(l.totalAmount), 0) FROM Loan l WHERE l.groupMember.group.id = :groupId AND l.status IN :statuses",
+                "SELECT SUM(l.totalAmount) FROM Loan l WHERE l.groupMember.group.id = :groupId AND l.status IN :statuses",
                 BigDecimal.class)
                 .setParameter("groupId", groupId)
                 .setParameter("statuses", Arrays.asList(LoanStatus.DISBURSED, LoanStatus.ACTIVE))
@@ -158,10 +160,10 @@ public class DashboardService {
                 new DashboardOverviewResponse.Summary(groupMemberRepository.countActiveMembersByGroupId(groupId),
                         contributionTotal,
                         shares.stream()
-                                .mapToInt(item -> item.getType().equals("PURCHASE")
+                                .map(item -> item.getType().equals("PURCHASE")
                                         || item.getType().equals("TRANSFER_IN") ? item.getQuantity()
-                                                : -item.getQuantity())
-                                .sum(),
+                                                : item.getQuantity().negate())
+                                .reduce(BigDecimal.ZERO, BigDecimal::add),
                         shareCapital, totalOutstandingLoan(groupId)),
                 contributionTrend, shareTrend,
                 meetings.stream().limit(5)

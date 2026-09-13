@@ -7,6 +7,6 @@ import lombok.Setter;
 @Setter
 public class ShareRedemptionRequest {
     private Long groupMemberId;
-    private Integer quantity;
+    private java.math.BigDecimal quantity;
     private String reference;
 }

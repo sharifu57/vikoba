@@ -92,10 +92,7 @@ public class LoanWorkflowService {
                 .filter(st -> st.getGroupMember().getId().equals(member.getId()))
                 .map(st -> {
 
-                    BigDecimal value = st.getUnitPrice()
-                            .multiply(
-                                    BigDecimal.valueOf(
-                                            st.getQuantity()));
+                    BigDecimal value = st.getUnitPrice().multiply(st.getQuantity());
 
                     return switch (st.getType()) {
                         case TRANSFER_OUT, REDEMPTION ->

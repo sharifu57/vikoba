@@ -51,6 +51,22 @@ public class AuthService {
         private static final SecureRandom RANDOM = new SecureRandom();
         private static final int OTP_EXPIRATION_MINUTES = 5;
 
+        public AuthResponse<Void> refresh(String refreshToken) {
+                if (refreshToken == null || !jwtService.isRefreshTokenValid(refreshToken)
+                                || !jwtService.isRefreshToken(refreshToken)) {
+                        return new AuthResponse<>(false, "Refresh token is invalid or expired.", null);
+                }
+                String phone = jwtService.extractUsername(refreshToken);
+                Optional<User> user = userRepository.findByPhone(phone);
+                if (user.isEmpty() || user.get().getStatus() == UserStatus.DISABLED) {
+                        return new AuthResponse<>(false, "Account is unavailable.", null);
+                }
+                AuthResponse<Void> response = new AuthResponse<>(true, "Session refreshed.", null);
+                response.setToken(jwtService.generateAccessToken(phone));
+                response.setRefreshToken(jwtService.generateRefreshToken(phone));
+                return response;
+        }
+
         public AuthResponse<AuthLookUpResponse> lookUp(LoginRequest request) {
                 Optional<User> optionalUser = userRepository.findByPhone(request.getPhone());
 

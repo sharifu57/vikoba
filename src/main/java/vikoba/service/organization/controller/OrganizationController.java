@@ -3,6 +3,7 @@ package vikoba.service.organization.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -55,6 +56,18 @@ public class OrganizationController {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
             return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
+    @PutMapping("/groups/{id}/settings")
+    public ResponseEntity<ApiResponse<GroupWithSettingsResponse>> updateGroupSettings(
+            @PathVariable Long id, @RequestBody GroupProfileSettingsRequest request) {
+        try {
+            vikobaService.updateGroupAndSettings(id, request);
+            return ResponseEntity.ok(ApiResponse.success("Group settings saved successfully.",
+                    vikobaService.getGroupWithSettings(id)));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
         }
     }
 

@@ -45,6 +45,12 @@ public class SharePurchaseRequestController {
                 service.list(groupId, status)));
     }
 
+    @GetMapping("/group/{groupId}/mine")
+    public ResponseEntity<ApiResponse<List<SharePurchaseRequestResponse>>> listMine(@PathVariable Long groupId) {
+        return ResponseEntity.ok(ApiResponse.success("Your share purchase requests retrieved successfully.",
+                service.listMine(groupId)));
+    }
+
     @PostMapping("/group/{groupId}/{requestId}/approve")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<SharePurchaseRequestResponse>> approve(@PathVariable Long groupId,

@@ -10,6 +10,7 @@ import vikoba.service.organization.dto.MemberResponse;
 import vikoba.service.social.dto.SocialFundContributionResponse;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -29,7 +30,7 @@ public class Member360Response {
 
     private List<SocialFundContributionResponse> socialFundContributions;
 
-    private Integer sharesOwned;
+    private BigDecimal sharesOwned;
 
     private List<MeetingResponse> upcomingMeetings;
 }

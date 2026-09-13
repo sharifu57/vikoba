@@ -9,4 +9,5 @@ public interface WorkflowNodeRepository extends JpaRepository<WorkflowNode, Long
     List<WorkflowNode> findByGroupIdAndActiveTrueOrderByActionKeyAscStepOrderAsc(Long groupId);
 
     List<WorkflowNode> findByGroupIdAndActionKeyAndActiveTrueOrderByStepOrderAsc(Long groupId, String actionKey);
+    List<WorkflowNode> findByGroupIdAndActionKeyOrderByStepOrderAsc(Long groupId, String actionKey);
 }

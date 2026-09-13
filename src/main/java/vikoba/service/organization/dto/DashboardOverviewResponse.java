@@ -15,7 +15,7 @@ public record DashboardOverviewResponse(
         List<Activity> recentActivities,
         Actions actions) {
 
-    public record Summary(long totalMembers, BigDecimal contributions, int shares, BigDecimal shareCapital,
+    public record Summary(long totalMembers, BigDecimal contributions, BigDecimal shares, BigDecimal shareCapital,
             BigDecimal outstandingLoans) {
     }
 

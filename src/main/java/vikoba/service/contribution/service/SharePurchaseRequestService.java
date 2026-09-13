@@ -1,6 +1,12 @@
 package vikoba.service.contribution.service;
 
 import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import vikoba.service.contribution.dto.ShareApprovalStep;
+import vikoba.service.organization.service.ShareApprovalWorkflowService;
+import vikoba.service.organization.repository.MemberRoleRepository;
+import java.util.ArrayList;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,6 +27,7 @@ import org.springframework.security.access.AccessDeniedException;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -34,6 +41,9 @@ public class SharePurchaseRequestService {
     private final VikobaGroupRepository vikobaGroupRepository;
     private final GroupAuthorizationService authorizationService;
     private final ShareService shareService;
+    private final ShareApprovalWorkflowService workflowService;
+    private final MemberRoleRepository memberRoleRepository;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public SharePurchaseRequestResponse submit(Long groupId, BigDecimal amount,
@@ -50,19 +60,20 @@ public class SharePurchaseRequestService {
         BigDecimal unitPrice = settings.getSharePrice();
         if (unitPrice == null || unitPrice.signum() <= 0)
             throw new IllegalArgumentException("Share price is not configured for this group");
+        BigDecimal jamiiAmount = settings.getJamiiContributionPerSharePayment();
+        if (jamiiAmount == null || jamiiAmount.signum() <= 0)
+            throw new IllegalArgumentException("Jamii is not configured. Ask your group admin to configure the Jamii amount first.");
+        BigDecimal shareAmount = amount.subtract(jamiiAmount);
+        if (shareAmount.signum() <= 0)
+            throw new IllegalArgumentException("The total payment must be greater than the Jamii amount of " + jamiiAmount.toPlainString());
         BigDecimal minimum = settings.getMinimumSharePurchaseAmount();
-        if (minimum != null && amount.compareTo(minimum) < 0)
-            throw new IllegalArgumentException("The minimum share purchase amount is " + minimum.toPlainString());
-        BigDecimal[] division = amount.divideAndRemainder(unitPrice);
-        if (division[1].compareTo(BigDecimal.ZERO) != 0)
-            throw new IllegalArgumentException("Share amount must be an exact multiple of the configured share price");
-        int resolvedQuantity = division[0].intValueExact();
-        if (resolvedQuantity <= 0)
-            throw new IllegalArgumentException("The amount must purchase at least one share");
-        if (quantity != null && quantity > 0 && quantity != resolvedQuantity)
+        if (minimum != null && shareAmount.compareTo(minimum) < 0)
+            throw new IllegalArgumentException("The share amount after Jamii must be at least " + minimum.toPlainString());
+        BigDecimal resolvedQuantity = shareAmount.divide(unitPrice, 8, RoundingMode.HALF_UP);
+        if (resolvedQuantity.signum() <= 0)
+            throw new IllegalArgumentException("The amount is too small to purchase shares");
+        if (quantity != null && resolvedQuantity.compareTo(BigDecimal.valueOf(quantity)) != 0)
             throw new IllegalArgumentException("Share quantity must match the amount and configured share price");
-        BigDecimal jamiiAmount = settings.getJamiiContributionPerSharePayment() == null
-                ? BigDecimal.ZERO : settings.getJamiiContributionPerSharePayment();
 
         ShareProduct product = shareProductRepository.findByGroupIdAndCode(groupId, "STANDARD")
                 .orElseGet(() -> shareProductRepository.save(ShareProduct.builder()
@@ -70,7 +81,7 @@ public class SharePurchaseRequestService {
                                 .orElseThrow(() -> new IllegalArgumentException("Group not found")))
                         .code("STANDARD").name("Group Share").sharePrice(unitPrice).active(true).build()));
         SharePurchaseRequestEntity entity = SharePurchaseRequestEntity.builder()
-                .groupMember(member).shareProduct(product).quantity(resolvedQuantity).amount(amount).jamiiAmount(jamiiAmount)
+                .groupMember(member).shareProduct(product).quantity(resolvedQuantity).amount(shareAmount).jamiiAmount(jamiiAmount)
                 .paymentMethod(paymentMethod == null || paymentMethod.isBlank() ? "CASH" : paymentMethod)
                 .paymentReference(blankToNull(paymentReference)).proofText(blankToNull(proofText))
                 .submittedAt(LocalDateTime.now()).build();
@@ -81,6 +92,7 @@ public class SharePurchaseRequestService {
         } catch (IOException ex) {
             throw new IllegalArgumentException("Unable to read the proof file");
         }
+        entity.setApprovalStepsJson(writeSteps(initialSteps(groupId, member)));
         return map(requestRepository.save(entity));
     }
 
@@ -93,37 +105,47 @@ public class SharePurchaseRequestService {
         return requests.stream().map(this::map).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<SharePurchaseRequestResponse> listMine(Long groupId) {
+        GroupMember member = authorizationService.requireCurrentMembership(groupId);
+        return requestRepository.findByGroupMemberIdOrderBySubmittedAtDesc(member.getId())
+                .stream().map(this::map).toList();
+    }
+
     @Transactional
     public SharePurchaseRequestResponse approve(Long groupId, Long requestId) {
         assertReviewer(groupId);
-        SharePurchaseRequestEntity request = findInGroup(groupId, requestId);
+        SharePurchaseRequestEntity request = findInGroupForUpdate(groupId, requestId);
         if (request.getStatus() != SharePurchaseRequestStatus.PENDING)
             throw new IllegalArgumentException("Only pending requests can be approved");
         GroupMember reviewer = authorizationService.requireCurrentMembership(groupId);
         if (reviewer.getId().equals(request.getGroupMember().getId()))
             throw new IllegalArgumentException("You cannot approve your own share purchase request");
 
-        boolean isAdmin = authorizationService.hasRole(groupId, GroupRole.GROUP_ADMIN);
-        boolean isAccountant = authorizationService.hasRole(groupId, GroupRole.ACCOUNTANT)
-                || authorizationService.hasPermission(groupId, "SHARE_PURCHASE_APPROVE");
-        boolean isChair = authorizationService.hasRole(groupId, GroupRole.GROUP_CHAIRMAN)
-                || authorizationService.hasRole(groupId, GroupRole.CHAIRPERSON);
-        LocalDateTime now = LocalDateTime.now();
-        if (isAdmin) {
-            request.setAccountantApprovedAt(now);
-            request.setChairApprovedAt(now);
-        } else {
-            if (isAccountant && request.getAccountantApprovedAt() == null)
-                request.setAccountantApprovedAt(now);
-            if (isChair && request.getChairApprovedAt() == null)
-                request.setChairApprovedAt(now);
+        var steps = readSteps(request);
+        if (steps.isEmpty()) steps = initialSteps(groupId, request.getGroupMember());
+        int next = -1;
+        for (int i = 0; i < steps.size(); i++) {
+            if (!steps.get(i).skipped() && steps.get(i).approvedAt() == null) { next = i; break; }
         }
-        if (request.getAccountantApprovedAt() == null || request.getChairApprovedAt() == null)
+        if (next < 0) throw new IllegalArgumentException("No independent approval step is available. Ask a group admin to configure another reviewer.");
+        var current = steps.get(next);
+        GroupRole requiredRole = GroupRole.valueOf(current.role());
+        boolean matches = authorizationService.hasRole(groupId, requiredRole)
+                || (requiredRole == GroupRole.GROUP_CHAIRMAN && authorizationService.hasRole(groupId, GroupRole.CHAIRPERSON))
+                || (requiredRole == GroupRole.CHAIRPERSON && authorizationService.hasRole(groupId, GroupRole.GROUP_CHAIRMAN));
+        if (!matches) throw new AccessDeniedException("Waiting for " + current.label() + " (" + current.role() + ")");
+        LocalDateTime now = LocalDateTime.now();
+        steps.set(next, new ShareApprovalStep(current.role(), current.label(), now.toString(), reviewer.getId(), false));
+        request.setApprovalStepsJson(writeSteps(steps));
+        if (requiredRole == GroupRole.ACCOUNTANT) request.setAccountantApprovedAt(now);
+        if (requiredRole == GroupRole.GROUP_CHAIRMAN || requiredRole == GroupRole.CHAIRPERSON) request.setChairApprovedAt(now);
+        if (steps.stream().anyMatch(step -> !step.skipped() && step.approvedAt() == null))
             return map(requestRepository.save(request));
 
         var purchase = new vikoba.service.contribution.dto.SharePurchaseRequest();
         purchase.setGroupMemberId(request.getGroupMember().getId());
-        purchase.setQuantity(request.getQuantity());
+        purchase.setQuantity(null);
         purchase.setAmount(request.getAmount());
         purchase.setPaymentMethod(request.getPaymentMethod());
         purchase.setReference(request.getPaymentReference());
@@ -137,7 +159,7 @@ public class SharePurchaseRequestService {
     @Transactional
     public SharePurchaseRequestResponse reject(Long groupId, Long requestId, String reason) {
         assertReviewer(groupId);
-        SharePurchaseRequestEntity request = findInGroup(groupId, requestId);
+        SharePurchaseRequestEntity request = findInGroupForUpdate(groupId, requestId);
         if (request.getStatus() != SharePurchaseRequestStatus.PENDING)
             throw new IllegalArgumentException("Only pending requests can be rejected");
         if (authorizationService.requireCurrentMembership(groupId).getId().equals(request.getGroupMember().getId()))
@@ -150,16 +172,22 @@ public class SharePurchaseRequestService {
 
     @Transactional(readOnly = true)
     public byte[] proof(Long groupId, Long requestId) {
-        assertReviewer(groupId);
-        SharePurchaseRequestEntity request = findInGroup(groupId, requestId);
+        SharePurchaseRequestEntity request = requireProofViewer(groupId, requestId);
         if (request.getProofFile() == null)
             throw new IllegalArgumentException("Proof file not found");
         return request.getProofFile();
     }
 
     public String proofContentType(Long groupId, Long requestId) {
+        return requireProofViewer(groupId, requestId).getProofContentType();
+    }
+
+    private SharePurchaseRequestEntity requireProofViewer(Long groupId, Long requestId) {
+        GroupMember current = authorizationService.requireCurrentMembership(groupId);
+        SharePurchaseRequestEntity request = findInGroup(groupId, requestId);
+        if (current.getId().equals(request.getGroupMember().getId())) return request;
         assertReviewer(groupId);
-        return findInGroup(groupId, requestId).getProofContentType();
+        return request;
     }
 
     private void assertReviewer(Long groupId) {
@@ -168,8 +196,18 @@ public class SharePurchaseRequestService {
                 || authorizationService.hasRole(groupId, GroupRole.GROUP_CHAIRMAN)
                 || authorizationService.hasRole(groupId, GroupRole.CHAIRPERSON)
                 || authorizationService.hasPermission(groupId, "SHARE_PURCHASE_APPROVE");
+        if (!allowed) allowed = workflowService.get(groupId).stream()
+                .anyMatch(step -> authorizationService.hasRole(groupId, step.role()));
         if (!allowed)
             throw new AccessDeniedException("You do not have permission to review share purchase proofs");
+    }
+
+    private SharePurchaseRequestEntity findInGroupForUpdate(Long groupId, Long requestId) {
+        SharePurchaseRequestEntity request = requestRepository.findWithLockById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Share purchase request not found"));
+        if (!request.getGroupMember().getGroup().getId().equals(groupId))
+            throw new IllegalArgumentException("Request does not belong to this group");
+        return request;
     }
 
     private SharePurchaseRequestEntity findInGroup(Long groupId, Long requestId) {
@@ -182,7 +220,11 @@ public class SharePurchaseRequestService {
 
     private SharePurchaseRequestResponse map(SharePurchaseRequestEntity request) {
         GroupMember member = request.getGroupMember();
-        return SharePurchaseRequestResponse.builder().id(request.getId()).groupMemberId(member.getId())
+        var steps = readSteps(request);
+        var next = steps.stream().filter(step -> !step.skipped() && step.approvedAt() == null).findFirst().orElse(null);
+        return SharePurchaseRequestResponse.builder().id(request.getId())
+                .approvalSteps(steps).currentStepRole(next == null ? null : next.role())
+                .currentStepLabel(next == null ? null : next.label()).groupMemberId(member.getId())
                 .memberName(member.getMember().getFirstName() + " " + member.getMember().getLastName())
                 .membershipNumber(member.getMembershipNumber()).quantity(request.getQuantity())
                 .amount(request.getAmount()).jamiiAmount(request.getJamiiAmount())
@@ -192,6 +234,44 @@ public class SharePurchaseRequestService {
                 .status(request.getStatus().name()).reviewReason(request.getReviewReason())
                 .submittedAt(request.getSubmittedAt()).reviewedAt(request.getReviewedAt())
                 .accountantApprovedAt(request.getAccountantApprovedAt()).chairApprovedAt(request.getChairApprovedAt()).build();
+    }
+
+    private List<ShareApprovalStep> initialSteps(Long groupId, GroupMember buyer) {
+        var buyerRoles = memberRoleRepository.findByGroupMemberIdAndActiveTrue(buyer.getId()).stream()
+                .map(role -> role.getRole()).toList();
+        var configured = workflowService.get(groupId);
+        var steps = new ArrayList<ShareApprovalStep>();
+        for (var config : configured) {
+            boolean skip = buyerRoles.contains(config.role())
+                    || (config.role() == GroupRole.GROUP_CHAIRMAN && buyerRoles.contains(GroupRole.CHAIRPERSON))
+                    || (config.role() == GroupRole.CHAIRPERSON && buyerRoles.contains(GroupRole.GROUP_CHAIRMAN));
+            steps.add(new ShareApprovalStep(config.role().name(), config.label(), null, null, skip));
+        }
+        // A buyer holding every configured role still needs an independent reviewer.
+        if (steps.stream().allMatch(ShareApprovalStep::skipped))
+            steps.add(new ShareApprovalStep(GroupRole.GROUP_ADMIN.name(), "Independent admin review", null, null, false));
+        return steps;
+    }
+
+    private List<ShareApprovalStep> readSteps(SharePurchaseRequestEntity request) {
+        if (request.getApprovalStepsJson() == null || request.getApprovalStepsJson().isBlank()) {
+            var steps = initialSteps(request.getGroupMember().getGroup().getId(), request.getGroupMember());
+            // Preserve approvals from requests created before this workflow was introduced.
+            var result = new ArrayList<ShareApprovalStep>();
+            for (var step : steps) {
+                LocalDateTime approved = step.role().equals("ACCOUNTANT") ? request.getAccountantApprovedAt()
+                        : step.role().equals("GROUP_CHAIRMAN") ? request.getChairApprovedAt() : null;
+                result.add(new ShareApprovalStep(step.role(), step.label(), approved == null ? null : approved.toString(), null, step.skipped()));
+            }
+            return result;
+        }
+        try { return objectMapper.readValue(request.getApprovalStepsJson(), new TypeReference<List<ShareApprovalStep>>() {}); }
+        catch (Exception ex) { throw new IllegalStateException("Invalid saved share approval workflow", ex); }
+    }
+
+    private String writeSteps(List<ShareApprovalStep> steps) {
+        try { return objectMapper.writeValueAsString(steps); }
+        catch (Exception ex) { throw new IllegalStateException("Unable to save share approval workflow", ex); }
     }
 
     private String blankToNull(String value) {

@@ -30,8 +30,8 @@ public class ShareTransaction extends BaseEntity {
         @Column(nullable = false, length = 20)
         private ShareTransactionType type;
 
-        @Column(nullable = false)
-        private Integer quantity;
+        @Column(nullable = false, precision = 19, scale = 8)
+        private BigDecimal quantity;
 
         @Column(name = "unit_price", precision = 19, scale = 2, nullable = false)
         private BigDecimal unitPrice;

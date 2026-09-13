@@ -190,7 +190,7 @@ public class Member360Service {
                         .map(this::mapSocialFundContribution)
                         .toList();
 
-        int sharesOwned = shareService.getMemberShareBalance(group.getId(), groupMemberId);
+        java.math.BigDecimal sharesOwned = shareService.getMemberShareBalance(group.getId(), groupMemberId);
         List<MeetingResponse> upcomingMeetings = meetingRepository.findUpcomingByGroupId(group.getId())
                 .stream()
                 .limit(5)

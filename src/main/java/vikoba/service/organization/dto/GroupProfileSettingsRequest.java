@@ -15,4 +15,5 @@ public class GroupProfileSettingsRequest {
     private LocalDate startDate;
     private LocalDate endDate;
     private GroupSettingsRequest settings;
+    private java.util.List<ShareApprovalStepConfig> shareApprovalSteps;
 }

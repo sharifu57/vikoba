@@ -13,6 +13,13 @@ public class GroupWithSettingsResponse {
     private VikobaGroupCreateResponse group;
     private GroupSettingsRequest settings;
     private boolean settingsConfigured;
+    private java.util.List<ShareApprovalStepConfig> shareApprovalSteps;
+
+    public GroupWithSettingsResponse(VikobaGroupCreateResponse group, GroupSettingsRequest settings, boolean settingsConfigured) {
+        this.group = group;
+        this.settings = settings;
+        this.settingsConfigured = settingsConfigured;
+    }
 
     public GroupWithSettingsResponse(VikobaGroupCreateResponse group, GroupSettingsRequest settings) {
         this.group = group;

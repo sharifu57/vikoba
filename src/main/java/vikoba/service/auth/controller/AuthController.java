@@ -1,6 +1,7 @@
 package vikoba.service.auth.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,6 +22,14 @@ import vikoba.service.common.response.AuthResponse;
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AuthService authService;
+
+    public record RefreshRequest(String refreshToken) {}
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse<Void>> refresh(@RequestBody RefreshRequest request) {
+        AuthResponse<Void> result = authService.refresh(request.refreshToken());
+        return ResponseEntity.status(result.isStatus() ? HttpStatus.OK : HttpStatus.UNAUTHORIZED).body(result);
+    }
 
     @PostMapping("/lookup")
     public ResponseEntity<AuthResponse<AuthLookUpResponse>> lookup(

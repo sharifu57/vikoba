@@ -47,6 +47,7 @@ public class VikobaService {
     private final MemberRoleRepository memberRoleRepository;
     private final MemberRepository memberRepository;
     private final GroupMemberRepository groupMemberRepository;
+    private final ShareApprovalWorkflowService shareApprovalWorkflowService;
 
     @Transactional
     public VikobaGroupCreateResponse createGroup(VikobaGroupCreateRequest request) {
@@ -88,6 +89,7 @@ public class VikobaService {
                 .build());
 
         createGroupSettings(group, request.getSettings());
+        shareApprovalWorkflowService.configure(group, null);
 
         // Ensure the creating user is a member of the new group and has an admin role
         try {
@@ -221,6 +223,7 @@ public class VikobaService {
         createGroupSettings(
                 group,
                 request.getSettings());
+        shareApprovalWorkflowService.configure(group, request.getShareApprovalSteps());
 
         // ============================================================
         // 8. CREATE GROUP MEMBERSHIP
@@ -244,7 +247,13 @@ public class VikobaService {
                             MembershipStatus.ACTIVE)
                     .build();
 
-            groupMemberRepository.save(groupMember);
+            groupMember = groupMemberRepository.save(groupMember);
+            memberRoleRepository.save(MemberRole.builder()
+                    .groupMember(groupMember)
+                    .role(GroupRole.GROUP_CHAIRMAN)
+                    .startDate(LocalDate.now())
+                    .active(true)
+                    .build());
         }
 
         // ============================================================
@@ -299,6 +308,8 @@ public class VikobaService {
 
             settingsRequest.setLatePaymentFine(
                     settings.getLatePaymentFine());
+            settingsRequest.setJamiiContributionPerSharePayment(
+                    settings.getJamiiContributionPerSharePayment());
         }
 
         // ============================================================
@@ -309,6 +320,7 @@ public class VikobaService {
                 groupResponse,
                 settingsRequest);
 
+        result.setShareApprovalSteps(shareApprovalWorkflowService.get(group.getId()));
         return new ApiResponse<>(
                 true,
                 "Group created successfully.",
@@ -343,6 +355,7 @@ public class VikobaService {
                 settingsRequest.setDefaultInterestRate(s.getDefaultInterestRate());
                 settingsRequest.setDefaultLoanDurationMonths(s.getDefaultLoanDurationMonths());
                 settingsRequest.setLatePaymentFine(s.getLatePaymentFine());
+                settingsRequest.setJamiiContributionPerSharePayment(s.getJamiiContributionPerSharePayment());
                 configured = true;
             }
 
@@ -382,7 +395,7 @@ public class VikobaService {
 
         VikobaGroup group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group was not found."));
-        assertGroupAdmin(group.getOrganization().getId());
+        assertGroupAdmin(groupId);
 
         if (request.getName() != null && !request.getName().isBlank()) {
             group.setName(request.getName().trim());
@@ -396,6 +409,11 @@ public class VikobaService {
         if (request.getCurrency() != null && !request.getCurrency().isBlank()) {
             group.setCurrency(request.getCurrency().trim().toUpperCase(Locale.ROOT));
         }
+        if (request.getStartDate() != null && request.getEndDate() != null) {
+            validateGroupCycleDates(request.getStartDate(), request.getEndDate());
+            group.setStartDate(request.getStartDate());
+            group.setEndDate(request.getEndDate());
+        }
         groupRepository.save(group);
 
         GroupSettings settings = groupSettingsRepository.findByGroupId(groupId)
@@ -404,6 +422,8 @@ public class VikobaService {
             applySettings(settings, request.getSettings());
             groupSettingsRepository.save(settings);
         }
+
+        if (request.getShareApprovalSteps() != null) shareApprovalWorkflowService.configure(group, request.getShareApprovalSteps());
 
         return new VikobaGroupCreateResponse(
                 group.getOrganization().getId(),
@@ -488,15 +508,19 @@ public class VikobaService {
 
             settingsRequest.setLatePaymentFine(
                     settings.getLatePaymentFine());
+            settingsRequest.setJamiiContributionPerSharePayment(
+                    settings.getJamiiContributionPerSharePayment());
+            settingsRequest.setRequiredLoanGuarantors(
+                    settings.getRequiredLoanGuarantors());
         }
 
         // ============================================================
         // 4. RETURN
         // ============================================================
 
-        return new GroupWithSettingsResponse(
-                groupResponse,
-                settingsRequest);
+        var response = new GroupWithSettingsResponse(groupResponse, settingsRequest);
+        response.setShareApprovalSteps(shareApprovalWorkflowService.get(groupId));
+        return response;
     }
 
     @Transactional
@@ -510,7 +534,7 @@ public class VikobaService {
 
         VikobaGroup group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group was not found."));
-        assertGroupAdmin(group.getOrganization().getId());
+        assertGroupAdmin(groupId);
 
         GroupSettings settings = groupSettingsRepository.findByGroupId(groupId)
                 .orElseGet(() -> GroupSettings.builder().group(group).build());
@@ -600,14 +624,21 @@ public class VikobaService {
         return value;
     }
 
-    private void assertGroupAdmin(Long organizationId) {
+    private void assertGroupAdmin(Long groupId) {
         User user = currentUser();
-        if (user.getMember() == null || !memberRoleRepository
-                .existsByGroupMemberMemberIdAndGroupMemberGroupOrganizationIdAndGroupMemberStatusAndRoleAndActiveTrue(
-                        user.getMember().getId(), organizationId, MembershipStatus.ACTIVE,
-                        GroupRole.GROUP_CHAIRMAN)) {
-            throw new IllegalStateException("Only an organization group administrator can manage group settings.");
-        }
+        if (user.getMember() == null) throw new IllegalStateException("Only a group administrator can manage settings.");
+        GroupMember membership = groupMemberRepository.findByGroupIdAndMemberId(groupId, user.getMember().getId())
+                .orElseThrow(() -> new IllegalStateException("You are not a member of this group."));
+        if (membership.getStatus() != MembershipStatus.ACTIVE)
+            throw new IllegalStateException("Only active group administrators can manage settings.");
+        boolean isLeader = memberRoleRepository.findByGroupMemberIdAndActiveTrue(membership.getId()).stream()
+                .anyMatch(role -> role.getRole() == GroupRole.GROUP_ADMIN
+                        || role.getRole() == GroupRole.GROUP_CHAIRMAN
+                        || role.getRole() == GroupRole.CHAIRPERSON);
+        // Older setup groups did not assign the founding member a leadership role.
+        boolean soleMember = groupMemberRepository.countActiveMembersByGroupId(groupId) == 1;
+        if (!isLeader && !soleMember)
+            throw new IllegalStateException("Only a group administrator can manage settings.");
     }
 
     private Organization resolveOrganizationForUser(User user) {

@@ -11,7 +11,7 @@ public class ShareOwnershipResponse {
     private Long groupMemberId;
     private String memberName;
     private String membershipNumber;
-    private Integer sharesOwned;
+    private BigDecimal sharesOwned;
     private BigDecimal unitPrice;
     private BigDecimal equityValue;
     private double ownershipPercentage;

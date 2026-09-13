@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 @Builder
 public class ShareSummaryResponse {
     private BigDecimal unitPrice;
-    private Integer totalShares;
+    private BigDecimal totalShares;
     private BigDecimal totalCapital;
     private Integer holdersCount;
     private Integer totalMembers;

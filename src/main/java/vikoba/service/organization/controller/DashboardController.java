@@ -1,6 +1,7 @@
 package vikoba.service.organization.controller;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +18,7 @@ import org.springframework.security.access.AccessDeniedException;
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
+@Slf4j
 public class DashboardController {
 
     private final DashboardService dashboardService;
@@ -33,6 +35,7 @@ public class DashboardController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
+            log.error("Unable to fetch dashboard overview for group {}", groupId, ex);
             return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to fetch dashboard overview."));
         }
     }
@@ -48,6 +51,7 @@ public class DashboardController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
+            log.error("Unable to fetch dashboard statistics for group {}", groupId, ex);
             return ResponseEntity.internalServerError()
                     .body(ApiResponse.error("Unable to fetch dashboard statistics."));
         }

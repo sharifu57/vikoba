@@ -10,10 +10,13 @@ import java.time.LocalDateTime;
 @Builder
 public class SharePurchaseRequestResponse {
     private Long id;
+    private java.util.List<ShareApprovalStep> approvalSteps;
+    private String currentStepRole;
+    private String currentStepLabel;
     private Long groupMemberId;
     private String memberName;
     private String membershipNumber;
-    private Integer quantity;
+    private BigDecimal quantity;
     private BigDecimal amount;
     private BigDecimal jamiiAmount;
     private String paymentMethod;

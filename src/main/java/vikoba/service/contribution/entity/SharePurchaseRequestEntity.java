@@ -27,13 +27,16 @@ public class SharePurchaseRequestEntity {
     @JoinColumn(name = "share_product_id", nullable = false)
     private ShareProduct shareProduct;
 
-    @Column(nullable = false)
-    private Integer quantity;
+    @Column(nullable = false, precision = 19, scale = 8)
+    private BigDecimal quantity;
 
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
 
-    @Column(name = "jamii_amount", nullable = false, precision = 19, scale = 2)
+    // PostgreSQL needs a database default when Hibernate adds this required
+    // column to a table that already contains purchase requests.
+    @Column(name = "jamii_amount", nullable = false, precision = 19, scale = 2,
+            columnDefinition = "numeric(19,2) default 0")
     @Builder.Default
     private BigDecimal jamiiAmount = BigDecimal.ZERO;
 
@@ -70,6 +73,9 @@ public class SharePurchaseRequestEntity {
 
     @Column(name = "accountant_approved_at")
     private LocalDateTime accountantApprovedAt;
+
+    @Column(name = "approval_steps_json", columnDefinition = "text")
+    private String approvalStepsJson;
 
     @Column(name = "chair_approved_at")
     private LocalDateTime chairApprovedAt;

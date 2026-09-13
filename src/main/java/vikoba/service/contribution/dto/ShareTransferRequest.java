@@ -8,6 +8,6 @@ import lombok.Setter;
 public class ShareTransferRequest {
     private Long fromGroupMemberId;
     private Long toGroupMemberId;
-    private Integer quantity;
+    private java.math.BigDecimal quantity;
     private String reference;
 }

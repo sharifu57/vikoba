@@ -18,6 +18,7 @@ import vikoba.service.organization.repository.GroupSettingsRepository;
 import vikoba.service.organization.repository.VikobaGroupRepository;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
@@ -41,13 +42,13 @@ public class ShareService {
     public ShareSummaryResponse getSummary(Long groupId) {
         ShareProduct product = getConfiguredProduct(groupId);
         List<ShareTransaction> ledger = shareTransactionRepository.findLedgerByGroupId(groupId);
-        Map<Long, Integer> balances = calculateBalances(ledger);
-        int totalShares = balances.values().stream().mapToInt(Integer::intValue).sum();
+        Map<Long, BigDecimal> balances = calculateBalances(ledger);
+        BigDecimal totalShares = balances.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         return ShareSummaryResponse.builder()
                 .unitPrice(product.getSharePrice())
                 .totalShares(totalShares)
-                .totalCapital(product.getSharePrice().multiply(BigDecimal.valueOf(totalShares)))
-                .holdersCount((int) balances.values().stream().filter(value -> value > 0).count())
+                .totalCapital(product.getSharePrice().multiply(totalShares).setScale(2, RoundingMode.HALF_UP))
+                .holdersCount((int) balances.values().stream().filter(value -> value.signum() > 0).count())
                 .totalMembers(groupMemberRepository.countActiveMembersByGroupId(groupId).intValue())
                 .maximumSharesPerMember(null)
                 .build();
@@ -57,25 +58,25 @@ public class ShareService {
     public List<ShareOwnershipResponse> getOwnership(Long groupId) {
         ShareProduct product = getConfiguredProduct(groupId);
         List<ShareTransaction> ledger = shareTransactionRepository.findLedgerByGroupId(groupId);
-        Map<Long, Integer> balances = calculateBalances(ledger);
-        int totalShares = balances.values().stream().mapToInt(Integer::intValue).sum();
+        Map<Long, BigDecimal> balances = calculateBalances(ledger);
+        BigDecimal totalShares = balances.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         Map<Long, ShareTransaction> members = ledger.stream()
                 .collect(Collectors.toMap(st -> st.getGroupMember().getId(), Function.identity(),
                         (first, ignored) -> first));
 
         return balances.entrySet().stream()
-                .filter(entry -> entry.getValue() > 0)
+                .filter(entry -> entry.getValue().signum() > 0)
                 .map(entry -> {
                     ShareTransaction transaction = members.get(entry.getKey());
-                    int quantity = entry.getValue();
+                    BigDecimal quantity = entry.getValue();
                     return ShareOwnershipResponse.builder()
                             .groupMemberId(entry.getKey())
                             .memberName(memberName(transaction.getGroupMember()))
                             .membershipNumber(transaction.getGroupMember().getMembershipNumber())
                             .sharesOwned(quantity)
                             .unitPrice(product.getSharePrice())
-                            .equityValue(product.getSharePrice().multiply(BigDecimal.valueOf(quantity)))
-                            .ownershipPercentage(totalShares == 0 ? 0 : quantity * 100d / totalShares)
+                            .equityValue(product.getSharePrice().multiply(quantity).setScale(2, RoundingMode.HALF_UP))
+                            .ownershipPercentage(totalShares.signum() == 0 ? 0 : quantity.doubleValue() * 100d / totalShares.doubleValue())
                             .build();
                 })
                 .sorted(Comparator.comparing(ShareOwnershipResponse::getSharesOwned).reversed())
@@ -90,7 +91,7 @@ public class ShareService {
     }
 
     @Transactional(readOnly = true)
-    public int getMemberShareBalance(Long groupId, Long groupMemberId) {
+    public BigDecimal getMemberShareBalance(Long groupId, Long groupMemberId) {
         return calculateBalance(shareTransactionRepository.findLedgerByGroupId(groupId), groupMemberId);
     }
 
@@ -98,8 +99,8 @@ public class ShareService {
     public ShareTransactionResponse purchase(Long groupId, SharePurchaseRequest request) {
         ShareProduct product = getOrCreateProduct(groupId);
         GroupMember member = getMemberInGroup(request.getGroupMemberId(), groupId);
-        int quantity = resolveQuantity(request.getQuantity(), request.getAmount(), product.getSharePrice());
-        BigDecimal amount = product.getSharePrice().multiply(BigDecimal.valueOf(quantity));
+        BigDecimal quantity = resolveQuantity(request.getQuantity(), request.getAmount(), product.getSharePrice());
+        BigDecimal amount = request.getAmount();
         BigDecimal minimum = getSettings(groupId).getMinimumSharePurchaseAmount();
         if (minimum != null && amount.compareTo(minimum) < 0) {
             throw new IllegalArgumentException("The minimum share purchase amount is " + minimum.toPlainString());
@@ -140,10 +141,10 @@ public class ShareService {
         if (Objects.equals(from.getId(), to.getId()))
             throw new IllegalArgumentException("Source and target members must differ");
         requirePositiveQuantity(request.getQuantity());
-        int owned = calculateBalance(shareTransactionRepository.findLedgerByGroupId(groupId), from.getId());
-        if (owned < request.getQuantity())
+        BigDecimal owned = calculateBalance(shareTransactionRepository.findLedgerByGroupId(groupId), from.getId());
+        if (owned.compareTo(request.getQuantity()) < 0)
             throw new IllegalArgumentException("Member does not own enough shares");
-        BigDecimal amount = product.getSharePrice().multiply(BigDecimal.valueOf(request.getQuantity()));
+        BigDecimal amount = product.getSharePrice().multiply(request.getQuantity()).setScale(2, RoundingMode.HALF_UP);
         String reference = reference(request.getReference());
         shareTransactionRepository.save(newTransaction(from, product, ShareTransactionType.TRANSFER_OUT,
                 request.getQuantity(), amount, reference + "-OUT"));
@@ -157,10 +158,10 @@ public class ShareService {
         ShareProduct product = getOrCreateProduct(groupId);
         GroupMember member = getMemberInGroup(request.getGroupMemberId(), groupId);
         requirePositiveQuantity(request.getQuantity());
-        int owned = calculateBalance(shareTransactionRepository.findLedgerByGroupId(groupId), member.getId());
-        if (owned < request.getQuantity())
+        BigDecimal owned = calculateBalance(shareTransactionRepository.findLedgerByGroupId(groupId), member.getId());
+        if (owned.compareTo(request.getQuantity()) < 0)
             throw new IllegalArgumentException("Member does not own enough shares");
-        BigDecimal amount = product.getSharePrice().multiply(BigDecimal.valueOf(request.getQuantity()));
+        BigDecimal amount = product.getSharePrice().multiply(request.getQuantity()).setScale(2, RoundingMode.HALF_UP);
         ShareTransaction transaction = newTransaction(member, product, ShareTransactionType.REDEMPTION,
                 request.getQuantity(), amount, request.getReference());
         return mapTransaction(shareTransactionRepository.save(transaction));
@@ -210,27 +211,24 @@ public class ShareService {
         return member;
     }
 
-    private int resolveQuantity(Integer quantity, BigDecimal amount, BigDecimal unitPrice) {
+    private BigDecimal resolveQuantity(Integer quantity, BigDecimal amount, BigDecimal unitPrice) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0)
             throw new IllegalArgumentException("Enter a positive share amount");
-        BigDecimal[] division = amount.divideAndRemainder(unitPrice);
-        if (division[1].compareTo(BigDecimal.ZERO) != 0)
-            throw new IllegalArgumentException("Share amount must be an exact multiple of the configured share price");
-        int calculatedQuantity = division[0].intValueExact();
-        if (calculatedQuantity <= 0)
-            throw new IllegalArgumentException("The amount must purchase at least one share");
-        if (quantity != null && quantity > 0 && quantity != calculatedQuantity)
+        BigDecimal calculatedQuantity = amount.divide(unitPrice, 8, RoundingMode.HALF_UP);
+        if (calculatedQuantity.signum() <= 0)
+            throw new IllegalArgumentException("The amount is too small to purchase shares");
+        if (quantity != null && quantity > 0 && calculatedQuantity.compareTo(BigDecimal.valueOf(quantity)) != 0)
             throw new IllegalArgumentException("Share quantity must match the amount and configured share price");
         return calculatedQuantity;
     }
 
-    private void requirePositiveQuantity(Integer quantity) {
-        if (quantity == null || quantity <= 0)
+    private void requirePositiveQuantity(BigDecimal quantity) {
+        if (quantity == null || quantity.signum() <= 0 || quantity.scale() > 8)
             throw new IllegalArgumentException("quantity must be greater than zero");
     }
 
     private ShareTransaction newTransaction(GroupMember member, ShareProduct product, ShareTransactionType type,
-            int quantity, BigDecimal amount, String requestedReference) {
+            BigDecimal quantity, BigDecimal amount, String requestedReference) {
         return ShareTransaction.builder().groupMember(member).shareProduct(product).type(type).quantity(quantity)
                 .unitPrice(product.getSharePrice()).totalAmount(amount).reference(reference(requestedReference))
                 .transactionDate(LocalDateTime.now()).build();
@@ -243,20 +241,20 @@ public class ShareService {
         return requested.trim() + "-" + UUID.randomUUID();
     }
 
-    private Map<Long, Integer> calculateBalances(List<ShareTransaction> ledger) {
-        Map<Long, Integer> balances = new HashMap<>();
+    private Map<Long, BigDecimal> calculateBalances(List<ShareTransaction> ledger) {
+        Map<Long, BigDecimal> balances = new HashMap<>();
         for (ShareTransaction transaction : ledger) {
-            int change = switch (transaction.getType()) {
+            BigDecimal change = switch (transaction.getType()) {
                 case PURCHASE, TRANSFER_IN, ADJUSTMENT -> transaction.getQuantity();
-                case TRANSFER_OUT, REDEMPTION -> -transaction.getQuantity();
+                case TRANSFER_OUT, REDEMPTION -> transaction.getQuantity().negate();
             };
-            balances.merge(transaction.getGroupMember().getId(), change, Integer::sum);
+            balances.merge(transaction.getGroupMember().getId(), change, BigDecimal::add);
         }
         return balances;
     }
 
-    private int calculateBalance(List<ShareTransaction> ledger, Long memberId) {
-        return calculateBalances(ledger).getOrDefault(memberId, 0);
+    private BigDecimal calculateBalance(List<ShareTransaction> ledger, Long memberId) {
+        return calculateBalances(ledger).getOrDefault(memberId, BigDecimal.ZERO);
     }
 
     private String memberName(GroupMember member) {
