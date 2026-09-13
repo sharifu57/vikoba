@@ -8,6 +8,7 @@ import vikoba.service.organization.entity.GroupMember;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(
@@ -84,4 +85,7 @@ public class Loan extends BaseEntity {
 
     @Column(columnDefinition = "TEXT")
     private String rejectionReason;
+
+    @Column(name = "consent_accepted_at")
+    private LocalDateTime consentAcceptedAt;
 }

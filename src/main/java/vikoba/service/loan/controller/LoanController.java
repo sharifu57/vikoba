@@ -25,6 +25,33 @@ public class LoanController {
                 .ok(ApiResponse.success("Loan products retrieved successfully.", service.products(groupId)));
     }
 
+    @GetMapping("/application-context")
+    public ResponseEntity<ApiResponse<LoanApplicationContext>> applicationContext(@PathVariable Long groupId) {
+        return ResponseEntity.ok(ApiResponse.success("Loan eligibility retrieved.", service.applicationContext(groupId)));
+    }
+
+    @GetMapping("/guarantees/mine")
+    public ResponseEntity<ApiResponse<List<LoanGuaranteeRequest>>> guarantees(@PathVariable Long groupId) {
+        return ResponseEntity.ok(ApiResponse.success("Guarantee requests retrieved.", service.guaranteeInbox(groupId)));
+    }
+
+    @PostMapping("/guarantees/{guaranteeId}/accept")
+    public ResponseEntity<ApiResponse<LoanResponse>> acceptGuarantee(@PathVariable Long groupId, @PathVariable Long guaranteeId) {
+        return ResponseEntity.ok(ApiResponse.success("Guarantee accepted.", service.decideGuarantee(groupId, guaranteeId, true)));
+    }
+
+    @PostMapping("/guarantees/{guaranteeId}/reject")
+    public ResponseEntity<ApiResponse<LoanResponse>> rejectGuarantee(@PathVariable Long groupId, @PathVariable Long guaranteeId) {
+        return ResponseEntity.ok(ApiResponse.success("Guarantee declined.", service.decideGuarantee(groupId, guaranteeId, false)));
+    }
+
+    @PostMapping("/{loanId}/guarantors/{guaranteeId}/replace")
+    public ResponseEntity<ApiResponse<LoanResponse>> replaceGuarantee(@PathVariable Long groupId, @PathVariable Long loanId,
+            @PathVariable Long guaranteeId, @RequestBody Map<String, Long> request) {
+        return ResponseEntity.ok(ApiResponse.success("Replacement guarantor invited.",
+                service.replaceGuarantor(groupId, loanId, guaranteeId, request.get("replacementId"))));
+    }
+
     @PostMapping("/applications")
     public ResponseEntity<ApiResponse<LoanResponse>> apply(@PathVariable Long groupId, @RequestBody LoanRequest r) {
         return ResponseEntity

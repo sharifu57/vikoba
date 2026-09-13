@@ -109,6 +109,16 @@ public class ExpenseService {
     public List<ShareApprovalStepConfig> configureApproval(Long groupId, List<ShareApprovalStepConfig> steps) {
         authorizationService.requirePermission(groupId, "WORKFLOW_MANAGE");
         workflowService.configure(requireGroup(groupId), steps);
+        String configuredSteps = writeSteps(workflowService.get(groupId).stream()
+                .map(step -> new ExpenseApprovalStep(step.role().name(), step.label(), null, null)).toList());
+        // Retarget untouched pending requests when the group changes its reviewer flow.
+        // An approval already in progress keeps its original history and order.
+        for (Expense expense : expenseRepository.findByGroupIdWithCategory(groupId)) {
+            if (expense.getStatus() == ExpenseStatus.PENDING && nextStep(readSteps(expense)) == 0) {
+                expense.setApprovalStepsJson(configuredSteps);
+                expenseRepository.save(expense);
+            }
+        }
         return workflowService.get(groupId);
     }
 
@@ -145,7 +155,6 @@ public class ExpenseService {
     }
 
     private void requireReviewer(Long groupId, ExpenseApprovalStep step) {
-        authorizationService.requirePermission(groupId, "EXPENSE_APPROVE");
         if (!authorizationService.hasRole(groupId, GroupRole.valueOf(step.role())))
             throw new AccessDeniedException("Only the configured " + step.role().replace('_', ' ') + " reviewer can approve this expense");
     }
@@ -157,10 +166,20 @@ public class ExpenseService {
 
     private List<ExpenseApprovalStep> readSteps(Expense expense) {
         if (expense.getApprovalStepsJson() == null || expense.getApprovalStepsJson().isBlank())
-            return workflowService.get(expense.getGroup().getId()).stream()
-                    .map(step -> new ExpenseApprovalStep(step.role().name(), step.label(), null, null)).toList();
-        try { return objectMapper.readValue(expense.getApprovalStepsJson(), new TypeReference<List<ExpenseApprovalStep>>() {}); }
+            return configuredSteps(expense.getGroup().getId());
+        try {
+            List<ExpenseApprovalStep> saved = objectMapper.readValue(expense.getApprovalStepsJson(), new TypeReference<List<ExpenseApprovalStep>>() {});
+            // A request nobody has acted on follows the current group configuration.
+            if (expense.getStatus() == ExpenseStatus.PENDING && nextStep(saved) == 0)
+                return configuredSteps(expense.getGroup().getId());
+            return saved;
+        }
         catch (Exception ex) { throw new IllegalStateException("Invalid saved expense approval steps", ex); }
+    }
+
+    private List<ExpenseApprovalStep> configuredSteps(Long groupId) {
+        return workflowService.get(groupId).stream()
+                .map(step -> new ExpenseApprovalStep(step.role().name(), step.label(), null, null)).toList();
     }
 
     private String writeSteps(List<ExpenseApprovalStep> steps) {
@@ -203,6 +222,6 @@ public class ExpenseService {
     private String required(String value, String field) { String result = blankToNull(value); if (result == null) throw new IllegalArgumentException(field + " is required."); return result; }
     private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private String generatedReference() { return "EXP-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase(); }
-    private ExpenseResponse toResponse(Expense expense) { var steps = readSteps(expense); int index = nextStep(steps); boolean pending = expense.getStatus() == ExpenseStatus.PENDING && index >= 0; boolean canApprove = pending && authorizationService.hasPermission(expense.getGroup().getId(), "EXPENSE_APPROVE") && authorizationService.hasRole(expense.getGroup().getId(), GroupRole.valueOf(steps.get(index).role())); return ExpenseResponse.builder().id(expense.getId()).groupId(expense.getGroup().getId()).categoryId(expense.getCategory().getId()).categoryName(expense.getCategory().getName()).reference(expense.getReference()).description(expense.getDescription()).amount(expense.getAmount()).expenseDate(expense.getExpenseDate()).receiptNumber(expense.getReceiptNumber()).status(expense.getStatus().name()).rejectionReason(expense.getRejectionReason()).approvalSteps(steps).currentStepLabel(pending ? steps.get(index).label() : null).canApprove(canApprove).createdAt(expense.getCreatedAt()).updatedAt(expense.getUpdatedAt()).build(); }
+    private ExpenseResponse toResponse(Expense expense) { var steps = readSteps(expense); int index = nextStep(steps); boolean pending = expense.getStatus() == ExpenseStatus.PENDING && index >= 0; boolean canApprove = pending && authorizationService.hasRole(expense.getGroup().getId(), GroupRole.valueOf(steps.get(index).role())); return ExpenseResponse.builder().id(expense.getId()).groupId(expense.getGroup().getId()).categoryId(expense.getCategory().getId()).categoryName(expense.getCategory().getName()).reference(expense.getReference()).description(expense.getDescription()).amount(expense.getAmount()).expenseDate(expense.getExpenseDate()).receiptNumber(expense.getReceiptNumber()).status(expense.getStatus().name()).rejectionReason(expense.getRejectionReason()).approvalSteps(steps).currentStepLabel(pending ? steps.get(index).label() : null).canApprove(canApprove).createdAt(expense.getCreatedAt()).updatedAt(expense.getUpdatedAt()).build(); }
     private ExpenseCategoryResponse toCategoryResponse(ExpenseCategory category) { return ExpenseCategoryResponse.builder().id(category.getId()).groupId(category.getGroup() == null ? null : category.getGroup().getId()).name(category.getName()).description(category.getDescription()).active(category.isActive()).build(); }
 }

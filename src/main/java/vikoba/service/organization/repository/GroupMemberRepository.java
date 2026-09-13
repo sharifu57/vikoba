@@ -2,6 +2,8 @@ package vikoba.service.organization.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 import vikoba.service.common.enums.MembershipStatus;
 import vikoba.service.organization.entity.GroupMember;
@@ -10,6 +12,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> {
+        @Lock(LockModeType.PESSIMISTIC_WRITE)
+        @Query("select gm from GroupMember gm where gm.id = :id")
+        Optional<GroupMember> findByIdForUpdate(@Param("id") Long id);
         Optional<GroupMember> findByGroupIdAndMemberId(
                         Long groupId,
                         Long memberId);

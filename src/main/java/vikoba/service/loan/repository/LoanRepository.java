@@ -15,6 +15,6 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
 
     @Query("select l from Loan l join fetch l.groupMember gm join fetch gm.member where gm.group.id = :groupId order by l.applicationDate desc")
     java.util.List<Loan> findByGroupId(@Param("groupId") Long groupId);
-    @Query("select l from Loan l where l.groupMember.id = :memberId and l.status in ('PENDING','UNDER_REVIEW','APPROVED','DISBURSED','ACTIVE')")
+    @Query("select l from Loan l where l.groupMember.id = :memberId and l.status in ('PENDING','UNDER_REVIEW','APPROVED','DISBURSED','ACTIVE','DEFAULTED')")
     java.util.List<Loan> findOpenByGroupMemberId(@Param("memberId") Long memberId);
 }
