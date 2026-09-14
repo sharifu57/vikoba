@@ -53,6 +53,8 @@ public class SecurityConfiguration {
                                                                 "/api/auth/verify-otp",
                                                                 "/api/auth/refresh", "/api/auth/resend-otp")
                                                 .permitAll()
+                                                .requestMatchers("/api/v1/public/**")
+                                                .permitAll()
                                                 .anyRequest().authenticated())
                                 .exceptionHandling(exceptions -> exceptions
                                                 .authenticationEntryPoint((request, response, exception) -> response

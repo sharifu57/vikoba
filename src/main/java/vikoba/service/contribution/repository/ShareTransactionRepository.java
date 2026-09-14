@@ -6,8 +6,12 @@ import org.springframework.data.repository.query.Param;
 import vikoba.service.contribution.entity.ShareTransaction;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 public interface ShareTransactionRepository extends JpaRepository<ShareTransaction, Long> {
+    @Query("select coalesce(sum(st.totalAmount), 0) from ShareTransaction st where st.type in ('PURCHASE', 'TRANSFER_IN')")
+    BigDecimal sumPurchaseAmount();
+
     @Query("""
             SELECT st FROM ShareTransaction st
             JOIN FETCH st.groupMember gm

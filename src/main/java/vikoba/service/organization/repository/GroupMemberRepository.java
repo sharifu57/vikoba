@@ -12,43 +12,47 @@ import java.util.List;
 import java.util.Optional;
 
 public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> {
-        @Lock(LockModeType.PESSIMISTIC_WRITE)
-        @Query("select gm from GroupMember gm where gm.id = :id")
-        Optional<GroupMember> findByIdForUpdate(@Param("id") Long id);
-        Optional<GroupMember> findByGroupIdAndMemberId(
-                        Long groupId,
-                        Long memberId);
+    @Query("select count(gm) from GroupMember gm where gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE")
+    long countActiveMembers();
 
-        boolean existsByGroupIdAndMemberId(
-                        Long groupId,
-                        Long memberId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select gm from GroupMember gm where gm.id = :id")
+    Optional<GroupMember> findByIdForUpdate(@Param("id") Long id);
 
-        List<GroupMember> findByGroupIdAndStatus(
-                        Long groupId,
-                        MembershipStatus status);
+    Optional<GroupMember> findByGroupIdAndMemberId(
+            Long groupId,
+            Long memberId);
 
-        List<GroupMember> findByGroupId(Long groupId);
+    boolean existsByGroupIdAndMemberId(
+            Long groupId,
+            Long memberId);
 
-        Long countByGroupId(Long groupId);
+    List<GroupMember> findByGroupIdAndStatus(
+            Long groupId,
+            MembershipStatus status);
 
-        @Query("""
-                            SELECT COUNT(gm)
-                            FROM GroupMember gm
-                            WHERE gm.group.id = :groupId
-                            AND gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE
-                        """)
-        Long countActiveMembersByGroupId(@Param("groupId") Long groupId);
+    List<GroupMember> findByGroupId(Long groupId);
 
-        @Query("""
-                            SELECT gm
-                            FROM GroupMember gm
-                            JOIN FETCH gm.group g
-                            JOIN FETCH g.organization
-                            WHERE gm.member.id = :memberId
-                            AND gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE
-                            ORDER BY gm.id ASC
-                        """)
-        List<GroupMember> findActiveGroupsByMemberId(
-                        @Param("memberId") Long memberId);
+    Long countByGroupId(Long groupId);
+
+    @Query("""
+                SELECT COUNT(gm)
+                FROM GroupMember gm
+                WHERE gm.group.id = :groupId
+                AND gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE
+            """)
+    Long countActiveMembersByGroupId(@Param("groupId") Long groupId);
+
+    @Query("""
+                SELECT gm
+                FROM GroupMember gm
+                JOIN FETCH gm.group g
+                JOIN FETCH g.organization
+                WHERE gm.member.id = :memberId
+                AND gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE
+                ORDER BY gm.id ASC
+            """)
+    List<GroupMember> findActiveGroupsByMemberId(
+            @Param("memberId") Long memberId);
 
 }

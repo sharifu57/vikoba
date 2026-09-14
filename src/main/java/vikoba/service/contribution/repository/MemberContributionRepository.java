@@ -8,6 +8,9 @@ import vikoba.service.contribution.entity.MemberContribution;
 import java.math.BigDecimal;
 
 public interface MemberContributionRepository extends JpaRepository<MemberContribution, Long> {
+    @Query("select coalesce(sum(mc.paidAmount), 0) from MemberContribution mc")
+    BigDecimal sumPaidAmount();
+
     @Query("""
                 SELECT COALESCE(SUM(mc.paidAmount), 0)
                 FROM MemberContribution mc

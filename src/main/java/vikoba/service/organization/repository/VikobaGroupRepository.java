@@ -9,42 +9,41 @@ import java.util.List;
 import java.util.Optional;
 
 public interface VikobaGroupRepository extends JpaRepository<VikobaGroup, Long> {
-    Optional<VikobaGroup> findByOrganizationIdAndCode(
-            Long organizationId,
-            String code
-    );
+        @Query("select count(g) from VikobaGroup g where g.status = vikoba.service.common.enums.VikobaGroupStatus.ACTIVE")
+        long countActiveGroups();
 
-    boolean existsByOrganizationIdAndCode(
-            Long organizationId,
-            String code
-    );
+        Optional<VikobaGroup> findByOrganizationIdAndCode(
+                        Long organizationId,
+                        String code);
 
-    @Query("""
-        SELECT DISTINCT g
-        FROM VikobaGroup g
-        JOIN g.members gm
-        WHERE gm.member.id = :memberId
-    """)
-    List<VikobaGroup> findGroupsByMemberId(
-            @Param("memberId") Long memberId
-    );
+        boolean existsByOrganizationIdAndCode(
+                        Long organizationId,
+                        String code);
 
-    @Query("""
-    SELECT DISTINCT g
-    FROM VikobaGroup g
-    JOIN g.members gm
-    WHERE gm.member.id = :memberId
-      AND gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE
-""")
-    List<VikobaGroup> findActiveGroupsByMemberId(
-            @Param("memberId") Long memberId
-    );
+        @Query("""
+                            SELECT DISTINCT g
+                            FROM VikobaGroup g
+                            JOIN g.members gm
+                            WHERE gm.member.id = :memberId
+                        """)
+        List<VikobaGroup> findGroupsByMemberId(
+                        @Param("memberId") Long memberId);
 
-    @Query("""
-    SELECT g
-    FROM VikobaGroup g
-    JOIN FETCH g.organization
-    WHERE g.id = :groupId
-""")
-    Optional<VikobaGroup> findByIdWithOrganization(@Param("groupId") Long groupId);
+        @Query("""
+                            SELECT DISTINCT g
+                            FROM VikobaGroup g
+                            JOIN g.members gm
+                            WHERE gm.member.id = :memberId
+                              AND gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE
+                        """)
+        List<VikobaGroup> findActiveGroupsByMemberId(
+                        @Param("memberId") Long memberId);
+
+        @Query("""
+                            SELECT g
+                            FROM VikobaGroup g
+                            JOIN FETCH g.organization
+                            WHERE g.id = :groupId
+                        """)
+        Optional<VikobaGroup> findByIdWithOrganization(@Param("groupId") Long groupId);
 }
