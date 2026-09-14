@@ -172,6 +172,7 @@ public class DashboardService {
                                 item.getAgenda()))
                         .toList(),
                 new DashboardOverviewResponse.Finance(totalReceived,
+
                         sumPayments(payments, "CASH"), sumPayments(payments, "BANK"),
                         sumPayments(payments, "MOBILE_MONEY"),
                         sumPayments(payments, "SOCIAL_FUND"), pendingAmount),
