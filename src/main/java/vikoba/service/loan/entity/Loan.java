@@ -88,4 +88,10 @@ public class Loan extends BaseEntity {
 
     @Column(name = "consent_accepted_at")
     private LocalDateTime consentAcceptedAt;
+
+    @Column(name = "required_guarantors_at_application")
+    private Integer requiredGuarantorsAtApplication;
+
+    @Column(name = "late_fine_at_application", precision = 19, scale = 2)
+    private BigDecimal lateFineAtApplication;
 }

@@ -47,11 +47,15 @@ public class LoanResponse {
     private String purpose;
 
     private String rejectionReason;
+    private BigDecimal latePaymentFine;
     private BigDecimal totalPaid;
     private BigDecimal remainingBalance;
     private Integer progress;
     private LocalDateTime consentAcceptedAt;
     private List<LoanGuarantorOption> guarantors;
+    private boolean canApprove;
+    private boolean canCancel;
+    private boolean canDisburse;
     private List<LoanApprovalStepResponse> approvalSteps;
     private List<LoanApprovalEventResponse> approvalEvents;
 }

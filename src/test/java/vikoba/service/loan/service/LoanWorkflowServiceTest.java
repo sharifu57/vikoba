@@ -8,6 +8,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import vikoba.service.common.enums.LoanStatus;
 import vikoba.service.loan.dto.LoanRequest;
 import vikoba.service.loan.entity.Loan;
+import vikoba.service.loan.entity.LoanApprovalStep;
+import vikoba.service.loan.repository.LoanInstallmentRepository;
+import vikoba.service.accounting.service.AccountingService;
+import vikoba.service.accounting.dto.AccountResponse;
+import vikoba.service.notification.SmsNotificationService;
+import vikoba.service.loan.repository.LoanApprovalStepRepository;
+import vikoba.service.loan.repository.LoanApprovalEventRepository;
+import vikoba.service.common.enums.GroupRole;
+import org.springframework.security.access.AccessDeniedException;
 import vikoba.service.loan.repository.LoanRepository;
 import vikoba.service.loan.repository.LoanProductRepository;
 import vikoba.service.loan.repository.LoanGuarantorRepository;
@@ -38,6 +47,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class LoanWorkflowServiceTest {
     @Mock LoanRepository loans;
+    @Mock LoanApprovalStepRepository approvalSteps;
+    @Mock LoanApprovalEventRepository approvalEvents;
+    @Mock LoanInstallmentRepository installments;
+    @Mock AccountingService accountingService;
+    @Mock SmsNotificationService smsNotificationService;
     @Mock LoanProductRepository products;
     @Mock ShareTransactionRepository shares;
     @Mock GroupSettingsRepository settings;
@@ -68,12 +82,88 @@ class LoanWorkflowServiceTest {
         Loan pending = new Loan();
         pending.setGroupMember(borrower);
         pending.setStatus(LoanStatus.PENDING);
-        when(loans.findById(3L)).thenReturn(Optional.of(pending));
+        when(loans.findLockedById(3L)).thenReturn(Optional.of(pending));
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> service.approve(1L, 3L));
         assertTrue(error.getMessage().contains("guarantors"));
-        verify(authorizationService).requirePermission(1L, "LOAN_MANAGE");
+
+    }
+
+    @Test
+    void accountantCannotApproveBeforeChairStep() {
+        VikobaGroup group = new VikobaGroup();
+        group.setId(1L);
+        GroupMember borrower = new GroupMember();
+        borrower.setId(11L);
+        borrower.setGroup(group);
+        GroupMember accountant = new GroupMember();
+        accountant.setId(12L);
+        Loan loan = new Loan();
+        loan.setId(3L);
+        loan.setGroupMember(borrower);
+        loan.setStatus(LoanStatus.UNDER_REVIEW);
+        LoanApprovalStep chair = LoanApprovalStep.builder().loan(loan).stepOrder(1)
+                .requiredRole(GroupRole.GROUP_CHAIRMAN).label("Chair review").build();
+        LoanApprovalStep accounting = LoanApprovalStep.builder().loan(loan).stepOrder(2)
+                .requiredRole(GroupRole.ACCOUNTANT).label("Accountant review").build();
+        when(loans.findLockedById(3L)).thenReturn(Optional.of(loan));
+        when(guarantors.findByLoanId(3L)).thenReturn(List.of());
+        when(approvalSteps.findByLoanIdOrderByStepOrderAsc(3L)).thenReturn(List.of(chair, accounting));
+        when(authorizationService.requireCurrentMembership(1L)).thenReturn(accountant);
+
+        assertThrows(AccessDeniedException.class, () -> service.approve(1L, 3L));
+        assertEquals(null, chair.getApprovedAt());
+    }
+
+    @Test
+    void finalAccountantApprovalActivatesLoanAndPostsDisbursement() {
+        VikobaGroup group = new VikobaGroup();
+        group.setId(1L);
+        group.setEndDate(LocalDate.now().plusMonths(6));
+        GroupMember borrower = new GroupMember();
+        borrower.setId(11L);
+        borrower.setGroup(group);
+        borrower.setMembershipNumber("M-11");
+        Member profile = new Member();
+        profile.setFirstName("Asha");
+        profile.setLastName("Juma");
+        profile.setPhone("255700000000");
+        borrower.setMember(profile);
+        GroupMember accountant = new GroupMember();
+        accountant.setId(12L);
+        LoanProduct product = new LoanProduct();
+        product.setId(8L);
+        product.setName("Standard");
+        product.setInterestRate(BigDecimal.TEN);
+        Loan loan = Loan.builder().groupMember(borrower).loanProduct(product).loanNumber("LN-TEST-1")
+                .principalAmount(new BigDecimal("10000")).interestAmount(new BigDecimal("1000"))
+                .totalAmount(new BigDecimal("11000")).durationMonths(1).status(LoanStatus.UNDER_REVIEW)
+                .applicationDate(LocalDate.now()).build();
+        loan.setId(3L);
+        loan.setRequiredGuarantorsAtApplication(0);
+        loan.setLateFineAtApplication(new BigDecimal("3000"));
+        LoanApprovalStep chair = LoanApprovalStep.builder().loan(loan).stepOrder(1)
+                .requiredRole(GroupRole.GROUP_CHAIRMAN).label("Chair review")
+                .approvedAt(java.time.LocalDateTime.now()).approvedByMemberId(13L).build();
+        LoanApprovalStep accounting = LoanApprovalStep.builder().loan(loan).stepOrder(2)
+                .requiredRole(GroupRole.ACCOUNTANT).label("Accountant review").build();
+        when(loans.findLockedById(3L)).thenReturn(Optional.of(loan));
+        when(guarantors.findByLoanId(3L)).thenReturn(List.of());
+        when(approvalSteps.findByLoanIdOrderByStepOrderAsc(3L)).thenReturn(List.of(chair, accounting));
+        when(authorizationService.requireCurrentMembership(1L)).thenReturn(accountant);
+        when(authorizationService.hasRole(1L, GroupRole.ACCOUNTANT)).thenReturn(true);
+        when(accountingService.ensureDefaultAccountsForGroup(1L)).thenReturn(List.of(
+                AccountResponse.builder().id(1L).code("1000").build(),
+                AccountResponse.builder().id(2L).code("1100").build()));
+
+        var result = service.approve(1L, 3L);
+        assertEquals(LoanStatus.ACTIVE, loan.getStatus());
+        assertEquals("ACTIVE", result.getStatus());
+        assertEquals(new BigDecimal("3000"), result.getLatePaymentFine());
+        assertEquals(LocalDate.now().plusMonths(1), loan.getMaturityDate());
+        verify(accountingService).post(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.any());
+        verify(installments).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test

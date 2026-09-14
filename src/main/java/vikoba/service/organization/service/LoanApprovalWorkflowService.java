@@ -25,8 +25,13 @@ public class LoanApprovalWorkflowService {
     }
 
     public void configure(VikobaGroup group, List<ShareApprovalStepConfig> steps) {
-        if (steps == null || steps.isEmpty() || steps.size() > 10)
-            throw new IllegalArgumentException("Choose between 1 and 10 loan approval steps.");
+        if (steps == null || steps.size() < 2 || steps.size() > 10)
+            throw new IllegalArgumentException("Loan approval needs a chair step and a final accountant step.");
+        if (steps.get(0) == null || (steps.get(0).role() != GroupRole.GROUP_CHAIRMAN
+                && steps.get(0).role() != GroupRole.CHAIRPERSON)
+                || steps.get(steps.size() - 1) == null
+                || steps.get(steps.size() - 1).role() != GroupRole.ACCOUNTANT)
+            throw new IllegalArgumentException("The chair must review first and the accountant must approve and disburse last.");
         var roles = new HashSet<GroupRole>();
         for (var step : steps) {
             if (step == null || step.role() == null || step.role() == GroupRole.MEMBER || !roles.add(step.role()))

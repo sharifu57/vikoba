@@ -9,6 +9,9 @@ import org.springframework.data.jpa.repository.Query;
 import vikoba.service.loan.entity.Loan;
 
 public interface LoanRepository extends JpaRepository<Loan, Long> {
+    @Query("select distinct l.groupMember.group.id from Loan l where l.status = 'ACTIVE'")
+    java.util.List<Long> findActiveLoanGroupIds();
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select l from Loan l where l.id = :id")
     Optional<Loan> findLockedById(@Param("id") Long id);
