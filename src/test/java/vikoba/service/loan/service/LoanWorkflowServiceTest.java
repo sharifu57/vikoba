@@ -10,6 +10,15 @@ import vikoba.service.loan.dto.LoanRequest;
 import vikoba.service.loan.entity.Loan;
 import vikoba.service.loan.entity.LoanApprovalStep;
 import vikoba.service.loan.repository.LoanInstallmentRepository;
+import vikoba.service.loan.repository.LoanPaymentRepository;
+import vikoba.service.loan.entity.LoanInstallment;
+import vikoba.service.contribution.entity.Payment;
+import vikoba.service.contribution.entity.PaymentAllocation;
+import vikoba.service.contribution.repository.PaymentRepository;
+import vikoba.service.contribution.repository.PaymentAllocationRepository;
+import vikoba.service.common.enums.PaymentStatus;
+import vikoba.service.common.enums.PaymentMethod;
+import vikoba.service.common.enums.PaymentAllocationType;
 import vikoba.service.accounting.service.AccountingService;
 import vikoba.service.accounting.dto.AccountResponse;
 import vikoba.service.notification.SmsNotificationService;
@@ -50,6 +59,9 @@ class LoanWorkflowServiceTest {
     @Mock LoanApprovalStepRepository approvalSteps;
     @Mock LoanApprovalEventRepository approvalEvents;
     @Mock LoanInstallmentRepository installments;
+    @Mock LoanPaymentRepository loanPayments;
+    @Mock PaymentRepository payments;
+    @Mock PaymentAllocationRepository paymentAllocations;
     @Mock AccountingService accountingService;
     @Mock SmsNotificationService smsNotificationService;
     @Mock LoanProductRepository products;
@@ -240,5 +252,48 @@ class LoanWorkflowServiceTest {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> service.apply(1L, request));
         assertTrue(error.getMessage().contains("own loan"));
+    }
+    @Test
+    void approvedOverpaymentContinuesIntoNextInstallment() {
+        VikobaGroup group = new VikobaGroup(); group.setId(1L);
+        Member profile = new Member(); profile.setFirstName("Asha"); profile.setLastName("Juma");
+        GroupMember borrower = new GroupMember(); borrower.setId(11L); borrower.setGroup(group); borrower.setMember(profile);
+        GroupMember accountant = new GroupMember(); accountant.setId(12L);
+        LoanProduct product = new LoanProduct(); product.setId(5L); product.setName("Standard"); product.setInterestRate(BigDecimal.TEN);
+        Loan loan = Loan.builder().groupMember(borrower).loanProduct(product).loanNumber("LN-1")
+                .principalAmount(new BigDecimal("10000")).interestAmount(new BigDecimal("1000"))
+                .totalAmount(new BigDecimal("11000")).durationMonths(2).applicationDate(LocalDate.now())
+                .status(LoanStatus.ACTIVE).build();
+        loan.setId(7L);
+        LoanInstallment first = LoanInstallment.builder().loan(loan).installmentNumber(1).dueDate(LocalDate.now())
+                .principalAmount(new BigDecimal("5000")).interestAmount(new BigDecimal("500"))
+                .totalAmount(new BigDecimal("5500")).build(); first.setId(21L);
+        LoanInstallment second = LoanInstallment.builder().loan(loan).installmentNumber(2).dueDate(LocalDate.now().plusMonths(1))
+                .principalAmount(new BigDecimal("5000")).interestAmount(new BigDecimal("500"))
+                .totalAmount(new BigDecimal("5500")).build(); second.setId(22L);
+        Payment payment = Payment.builder().group(group).groupMember(borrower).reference("LRP-1")
+                .amount(new BigDecimal("7000")).paymentMethod(PaymentMethod.MOBILE_MONEY)
+                .status(PaymentStatus.PENDING).paymentDate(java.time.LocalDateTime.now()).build(); payment.setId(31L);
+        PaymentAllocation allocation = PaymentAllocation.builder().payment(payment).type(PaymentAllocationType.LOAN_REPAYMENT)
+                .amount(payment.getAmount()).referenceId(loan.getId()).build();
+        when(payments.findLockedById(31L)).thenReturn(Optional.of(payment));
+        when(paymentAllocations.findByPaymentId(31L)).thenReturn(List.of(allocation));
+        when(loans.findLockedById(7L)).thenReturn(Optional.of(loan));
+        when(authorizationService.requireCurrentMembership(1L)).thenReturn(accountant);
+        when(authorizationService.hasRole(1L, GroupRole.ACCOUNTANT)).thenReturn(true);
+        when(installments.findByLoanIdOrderByInstallmentNumberAsc(7L)).thenReturn(List.of(first, second));
+        when(accountingService.ensureDefaultAccountsForGroup(1L)).thenReturn(List.of(
+                AccountResponse.builder().id(1L).code("1000").build(),
+                AccountResponse.builder().id(2L).code("1100").build(),
+                AccountResponse.builder().id(3L).code("4000").build()));
+
+        var result = service.approveRepayment(1L, 31L);
+
+        assertEquals(PaymentStatus.COMPLETED, payment.getStatus());
+        assertEquals(new BigDecimal("5500"), first.getPaidAmount());
+        assertEquals(new BigDecimal("1500"), second.getPaidAmount());
+        assertEquals("COMPLETED", result.getStatus());
+        verify(loanPayments, org.mockito.Mockito.times(2)).save(org.mockito.ArgumentMatchers.any());
+        verify(accountingService).post(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.any());
     }
 }

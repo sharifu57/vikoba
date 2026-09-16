@@ -62,4 +62,13 @@ public class Payment extends BaseEntity {
 
     @Column(length = 255)
     private String description;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    @Column(name = "reviewed_by_member_id")
+    private Long reviewedByMemberId;
+
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
 }

@@ -108,10 +108,29 @@ public class LoanController {
     }
 
     @PostMapping("/{loanId}/repayments")
-    public ResponseEntity<ApiResponse<LoanResponse>> repay(@PathVariable Long groupId, @PathVariable Long loanId,
+    public ResponseEntity<ApiResponse<LoanRepaymentResponse>> repay(@PathVariable Long groupId, @PathVariable Long loanId,
             @RequestBody LoanRepaymentRequest r) {
         return ResponseEntity
-                .ok(ApiResponse.success("Loan repayment recorded successfully.", service.repay(groupId, loanId, r)));
+                .ok(ApiResponse.success("Loan repayment submitted for accountant approval.", service.repay(groupId, loanId, r)));
+    }
+
+    @GetMapping("/repayments")
+    public ResponseEntity<ApiResponse<List<LoanRepaymentResponse>>> repayments(@PathVariable Long groupId) {
+        return ResponseEntity.ok(ApiResponse.success("Loan repayment requests retrieved.", service.repayments(groupId)));
+    }
+
+    @PostMapping("/repayments/{paymentId}/approve")
+    public ResponseEntity<ApiResponse<LoanRepaymentResponse>> approveRepayment(@PathVariable Long groupId,
+            @PathVariable Long paymentId) {
+        return ResponseEntity.ok(ApiResponse.success("Repayment approved and allocated to the loan schedule.",
+                service.approveRepayment(groupId, paymentId)));
+    }
+
+    @PostMapping("/repayments/{paymentId}/reject")
+    public ResponseEntity<ApiResponse<LoanRepaymentResponse>> rejectRepayment(@PathVariable Long groupId,
+            @PathVariable Long paymentId, @RequestBody LoanDecisionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Repayment rejected.",
+                service.rejectRepayment(groupId, paymentId, request)));
     }
 
     @PostMapping("/assess-overdue")

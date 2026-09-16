@@ -7,6 +7,8 @@ import vikoba.service.common.enums.*;
 import vikoba.service.accounting.service.AccountingService;
 import vikoba.service.accounting.dto.*;
 import vikoba.service.contribution.entity.Payment;
+import vikoba.service.contribution.entity.PaymentAllocation;
+import vikoba.service.contribution.repository.PaymentAllocationRepository;
 import vikoba.service.contribution.repository.PaymentRepository;
 import vikoba.service.contribution.repository.ShareTransactionRepository;
 import vikoba.service.fine.entity.*;
@@ -35,6 +37,8 @@ public class LoanWorkflowService {
     private final GroupSettingsRepository settings;
     private final ShareTransactionRepository shareTransactions;
     private final PaymentRepository payments;
+    private final PaymentAllocationRepository paymentAllocations;
+    private final LoanPaymentRepository loanPayments;
     private final FineRepository fines;
     private final FineTypeRepository fineTypes;
     private final LoanGuarantorRepository guarantors;
@@ -540,25 +544,100 @@ public class LoanWorkflowService {
     }
 
     @Transactional
-    public LoanResponse repay(Long groupId, Long id, LoanRepaymentRequest r) {
+    public LoanRepaymentResponse repay(Long groupId, Long id, LoanRepaymentRequest r) {
         Loan l = requireForUpdate(id, groupId);
         if (l.getStatus() != LoanStatus.ACTIVE && l.getStatus() != LoanStatus.DEFAULTED)
             throw new IllegalArgumentException("This loan is not open for repayment.");
-        BigDecimal left = positive(r.getAmount(), "repayment amount");
-        for (LoanInstallment i : installments.findByLoanIdOrderByInstallmentNumberAsc(id)) {
-            if (left.signum() <= 0)
-                break;
-            BigDecimal due = i.getTotalAmount().subtract(i.getPaidAmount()), paid = left.min(due);
-            i.setPaidAmount(i.getPaidAmount().add(paid));
-            left = left.subtract(paid);
-            i.setStatus(i.getPaidAmount().compareTo(i.getTotalAmount()) >= 0 ? InstallmentStatus.PAID
-                    : InstallmentStatus.PARTIAL);
-        }
-        if (left.signum() > 0)
+        GroupMember actor = authorizationService.requireCurrentMembership(groupId);
+        if (!actor.getId().equals(l.getGroupMember().getId()))
+            throw new AccessDeniedException("Only the borrower can submit this loan repayment.");
+        BigDecimal amount = positive(r.getAmount(), "repayment amount");
+        BigDecimal outstanding = schedule(l).stream().map(LoanInstallmentResponse::getBalance)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal pending = payments.findLoanRepaymentsByGroupId(groupId).stream()
+                .filter(payment -> payment.getStatus() == PaymentStatus.PENDING)
+                .filter(payment -> paymentAllocations.findByPaymentId(payment.getId()).stream()
+                        .anyMatch(allocation -> Objects.equals(allocation.getReferenceId(), id)))
+                .map(Payment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (amount.compareTo(outstanding.subtract(pending)) > 0)
             throw new IllegalArgumentException("Repayment exceeds the outstanding loan balance.");
-        if (schedule(l).stream().allMatch(i -> i.getBalance().signum() == 0))
-            l.setStatus(LoanStatus.COMPLETED);
-        return response(l);
+        Payment payment = payments.save(Payment.builder().group(l.getGroupMember().getGroup())
+                .groupMember(l.getGroupMember()).reference("LRP-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase())
+                .externalReference(blank(r.getExternalReference())).amount(amount)
+                .paymentMethod(parsePaymentMethod(r.getPaymentMethod())).status(PaymentStatus.PENDING)
+                .paymentDate(LocalDateTime.now()).description("Loan repayment awaiting accountant approval for " + l.getLoanNumber()).build());
+        paymentAllocations.save(PaymentAllocation.builder().payment(payment).type(PaymentAllocationType.LOAN_REPAYMENT)
+                .amount(amount).referenceId(l.getId()).description("Loan repayment " + l.getLoanNumber()).build());
+        return repaymentResponse(payment, l);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanRepaymentResponse> repayments(Long groupId) {
+        GroupMember actor = authorizationService.requireCurrentMembership(groupId);
+        boolean accountant = authorizationService.hasRole(groupId, GroupRole.ACCOUNTANT);
+        return payments.findLoanRepaymentsByGroupId(groupId).stream()
+                .filter(payment -> accountant || payment.getGroupMember().getId().equals(actor.getId()))
+                .map(payment -> {
+            Long loanId = paymentAllocations.findByPaymentId(payment.getId()).stream()
+                    .filter(allocation -> allocation.getType() == PaymentAllocationType.LOAN_REPAYMENT)
+                    .map(PaymentAllocation::getReferenceId).findFirst().orElse(null);
+            return repaymentResponse(payment, require(loanId, groupId));
+                }).toList();
+    }
+
+    @Transactional
+    public LoanRepaymentResponse approveRepayment(Long groupId, Long paymentId) {
+        Payment payment = requirePendingRepayment(groupId, paymentId);
+        Loan loan = repaymentLoan(groupId, payment);
+        GroupMember accountant = requireIndependentAccountant(groupId, loan);
+        BigDecimal left = payment.getAmount();
+        BigDecimal principalTotal = BigDecimal.ZERO, interestTotal = BigDecimal.ZERO, penaltyTotal = BigDecimal.ZERO;
+        for (LoanInstallment installment : installments.findByLoanIdOrderByInstallmentNumberAsc(loan.getId())) {
+            if (left.signum() <= 0) break;
+            BigDecimal already = installment.getPaidAmount();
+            BigDecimal penaltyPaid = already.min(installment.getPenaltyAmount());
+            already = already.subtract(penaltyPaid);
+            BigDecimal interestPaid = already.min(installment.getInterestAmount());
+            already = already.subtract(interestPaid);
+            BigDecimal principalPaid = already.min(installment.getPrincipalAmount());
+            BigDecimal penalty = left.min(installment.getPenaltyAmount().subtract(penaltyPaid).max(BigDecimal.ZERO));
+            left = left.subtract(penalty);
+            BigDecimal interest = left.min(installment.getInterestAmount().subtract(interestPaid).max(BigDecimal.ZERO));
+            left = left.subtract(interest);
+            BigDecimal principal = left.min(installment.getPrincipalAmount().subtract(principalPaid).max(BigDecimal.ZERO));
+            left = left.subtract(principal);
+            BigDecimal applied = penalty.add(interest).add(principal);
+            if (applied.signum() == 0) continue;
+            installment.setPaidAmount(installment.getPaidAmount().add(applied));
+            installment.setStatus(installment.getPaidAmount().compareTo(installment.getTotalAmount()) >= 0
+                    ? InstallmentStatus.PAID : InstallmentStatus.PARTIAL);
+            installments.save(installment);
+            loanPayments.save(LoanPayment.builder().loan(loan).installment(installment).payment(payment)
+                    .principalAmount(principal).interestAmount(interest).penaltyAmount(penalty).totalAmount(applied).build());
+            principalTotal = principalTotal.add(principal);
+            interestTotal = interestTotal.add(interest);
+            penaltyTotal = penaltyTotal.add(penalty);
+        }
+        if (left.signum() > 0) throw new IllegalArgumentException("Repayment exceeds the current outstanding balance.");
+        payment.setStatus(PaymentStatus.COMPLETED);
+        payment.setReviewedAt(LocalDateTime.now());
+        payment.setReviewedByMemberId(accountant.getId());
+        payment.setDescription("Approved loan repayment for " + loan.getLoanNumber());
+        postRepayment(groupId, payment, principalTotal, interestTotal.add(penaltyTotal));
+        if (schedule(loan).stream().allMatch(item -> item.getBalance().signum() == 0)) loan.setStatus(LoanStatus.COMPLETED);
+        return repaymentResponse(payment, loan);
+    }
+
+    @Transactional
+    public LoanRepaymentResponse rejectRepayment(Long groupId, Long paymentId, LoanDecisionRequest request) {
+        Payment payment = requirePendingRepayment(groupId, paymentId);
+        Loan loan = repaymentLoan(groupId, payment);
+        GroupMember accountant = requireIndependentAccountant(groupId, loan);
+        payment.setStatus(PaymentStatus.FAILED);
+        payment.setReviewedAt(LocalDateTime.now());
+        payment.setReviewedByMemberId(accountant.getId());
+        payment.setRejectionReason(required(request.getRejectionReason(), "rejection reason"));
+        return repaymentResponse(payment, loan);
     }
 
     @Transactional
@@ -688,6 +767,92 @@ public class LoanWorkflowService {
                         item.getGroupMember().getMember().getPhone(), item.getGroupMember().getMember().getAddress(),
                         item.getGroupMember().getMembershipNumber(), item.getStatus().name(), false, null)).toList())
                 .build();
+    }
+
+    private Payment requirePendingRepayment(Long groupId, Long paymentId) {
+        Payment payment = payments.findLockedById(paymentId)
+                .filter(item -> item.getGroup().getId().equals(groupId))
+                .orElseThrow(() -> new IllegalArgumentException("Loan repayment request was not found in this group."));
+        boolean loanRepayment = paymentAllocations.findByPaymentId(paymentId).stream()
+                .anyMatch(item -> item.getType() == PaymentAllocationType.LOAN_REPAYMENT);
+        if (!loanRepayment) throw new IllegalArgumentException("This payment is not a loan repayment.");
+        if (payment.getStatus() != PaymentStatus.PENDING)
+            throw new IllegalArgumentException("This repayment has already been reviewed.");
+        return payment;
+    }
+
+    private Loan repaymentLoan(Long groupId, Payment payment) {
+        Long loanId = paymentAllocations.findByPaymentId(payment.getId()).stream()
+                .filter(item -> item.getType() == PaymentAllocationType.LOAN_REPAYMENT)
+                .map(PaymentAllocation::getReferenceId).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Loan repayment allocation is missing."));
+        return requireForUpdate(loanId, groupId);
+    }
+
+    private GroupMember requireIndependentAccountant(Long groupId, Loan loan) {
+        GroupMember accountant = authorizationService.requireCurrentMembership(groupId);
+        if (!authorizationService.hasRole(groupId, GroupRole.ACCOUNTANT))
+            throw new AccessDeniedException("Only the group accountant can review loan repayments.");
+        if (accountant.getId().equals(loan.getGroupMember().getId()))
+            throw new AccessDeniedException("You cannot approve your own loan repayment.");
+        return accountant;
+    }
+
+    private LoanRepaymentResponse repaymentResponse(Payment payment, Loan loan) {
+        GroupMember actor = authorizationService.requireCurrentMembership(loan.getGroupMember().getGroup().getId());
+        boolean canApprove = payment.getStatus() == PaymentStatus.PENDING
+                && !actor.getId().equals(loan.getGroupMember().getId())
+                && authorizationService.hasRole(loan.getGroupMember().getGroup().getId(), GroupRole.ACCOUNTANT);
+        return LoanRepaymentResponse.builder().id(payment.getId()).loanId(loan.getId())
+                .loanNumber(loan.getLoanNumber()).groupMemberId(loan.getGroupMember().getId())
+                .memberName(loan.getGroupMember().getMember().getFirstName() + " "
+                        + loan.getGroupMember().getMember().getLastName())
+                .amount(payment.getAmount()).paymentMethod(payment.getPaymentMethod().name())
+                .externalReference(payment.getExternalReference()).status(payment.getStatus().name())
+                .submittedAt(payment.getPaymentDate()).reviewedAt(payment.getReviewedAt())
+                .rejectionReason(payment.getRejectionReason()).canApprove(canApprove).build();
+    }
+
+    private void postRepayment(Long groupId, Payment payment, BigDecimal principal, BigDecimal income) {
+        var accounts = accountingService.ensureDefaultAccountsForGroup(groupId);
+        Long cashId = accounts.stream().filter(account -> "1000".equals(account.getCode())).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Cash account is not configured.")).getId();
+        Long receivableId = accounts.stream().filter(account -> "1100".equals(account.getCode())).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Loan receivable account is not configured.")).getId();
+        Long incomeId = accounts.stream().filter(account -> "4000".equals(account.getCode())).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Interest income account is not configured.")).getId();
+        var cash = new JournalLineRequest();
+        cash.setAccountId(cashId); cash.setDebit(payment.getAmount()); cash.setDescription("Loan repayment received");
+        List<JournalLineRequest> lines = new ArrayList<>();
+        lines.add(cash);
+        if (principal.signum() > 0) {
+            var receivable = new JournalLineRequest();
+            receivable.setAccountId(receivableId); receivable.setCredit(principal); receivable.setDescription("Loan principal repaid");
+            lines.add(receivable);
+        }
+        if (income.signum() > 0) {
+            var interest = new JournalLineRequest();
+            interest.setAccountId(incomeId); interest.setCredit(income); interest.setDescription("Loan interest and late fine received");
+            lines.add(interest);
+        }
+        var entry = new JournalEntryRequest();
+        entry.setReference(payment.getReference());
+        entry.setDescription("Approved loan repayment " + payment.getReference());
+        entry.setLines(lines);
+        accountingService.post(groupId, entry);
+    }
+
+    private PaymentMethod parsePaymentMethod(String value) {
+        if (value == null || value.isBlank()) return PaymentMethod.MOBILE_MONEY;
+        try {
+            return PaymentMethod.valueOf(value.trim().toUpperCase().replace(' ', '_'));
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException("Choose a valid repayment method.");
+        }
+    }
+
+    private String blank(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private BigDecimal positive(BigDecimal n, String f) {
