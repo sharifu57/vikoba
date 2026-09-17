@@ -385,17 +385,18 @@ public class LoanWorkflowService {
             String label = item.label();
             boolean skip = borrowerIsReviewer && i < config.size() - 1;
             if (borrowerIsReviewer && !skip) {
-                var independentRoles = members.findByGroupIdAndStatus(loan.getGroupMember().getGroup().getId(),
-                        MembershipStatus.ACTIVE).stream()
+                boolean independentReviewerExists = members
+                        .findByGroupIdAndStatus(loan.getGroupMember().getGroup().getId(), MembershipStatus.ACTIVE)
+                        .stream()
                         .filter(candidate -> !candidate.getId().equals(loan.getGroupMember().getId()))
                         .flatMap(candidate -> memberRoles.findByGroupMemberIdAndActiveTrue(candidate.getId()).stream())
-                        .map(MemberRole::getRole).collect(java.util.stream.Collectors.toSet());
-                role = java.util.stream.Stream.of(GroupRole.GROUP_ADMIN, GroupRole.TREASURER,
-                        GroupRole.GROUP_CHAIRMAN, GroupRole.LOAN_OFFICER, GroupRole.SECRETARY)
-                        .filter(candidate -> !borrowerRoles.contains(candidate) && independentRoles.contains(candidate))
-                        .findFirst().orElseThrow(() -> new IllegalArgumentException(
-                                "Assign another active group member an independent reviewer role before this loan can enter approval."));
-                label = role.name().replace('_', ' ') + " independent review";
+                        .map(MemberRole::getRole)
+                        .anyMatch(candidateRole -> sameWorkflowRole(candidateRole, role));
+                if (!independentReviewerExists)
+                    throw new IllegalArgumentException("The applicant also holds the final "
+                            + role.name().replace('_', ' ')
+                            + " role. Assign that role to another active member so the loan can be independently approved and disbursed.");
+                label = label + " (independent reviewer)";
             }
             approvalSteps.save(LoanApprovalStep.builder().loan(loan).stepOrder(i + 1)
                     .requiredRole(role).label(label).approvedAt(skip ? LocalDateTime.now() : null).build());
@@ -418,6 +419,12 @@ public class LoanWorkflowService {
                 || (role == GroupRole.GROUP_CHAIRMAN && authorizationService.hasRole(groupId, GroupRole.CHAIRPERSON))
                 || (role == GroupRole.CHAIRPERSON && authorizationService.hasRole(groupId, GroupRole.GROUP_CHAIRMAN));
         if (!matches) throw new AccessDeniedException("This loan is waiting for the " + step.getLabel() + ".");
+    }
+
+    private boolean sameWorkflowRole(GroupRole first, GroupRole second) {
+        if (first == second) return true;
+        return (first == GroupRole.GROUP_CHAIRMAN && second == GroupRole.CHAIRPERSON)
+                || (first == GroupRole.CHAIRPERSON && second == GroupRole.GROUP_CHAIRMAN);
     }
 
     private void event(Loan loan, Integer stepOrder, String action, String reason, Long actorId) {
@@ -624,7 +631,13 @@ public class LoanWorkflowService {
         payment.setReviewedByMemberId(accountant.getId());
         payment.setDescription("Approved loan repayment for " + loan.getLoanNumber());
         postRepayment(groupId, payment, principalTotal, interestTotal.add(penaltyTotal));
-        if (schedule(loan).stream().allMatch(item -> item.getBalance().signum() == 0)) loan.setStatus(LoanStatus.COMPLETED);
+        List<LoanInstallmentResponse> updatedSchedule = schedule(loan);
+        if (updatedSchedule.stream().allMatch(item -> item.getBalance().signum() == 0)) {
+            loan.setStatus(LoanStatus.COMPLETED);
+        } else if (loan.getStatus() == LoanStatus.DEFAULTED && updatedSchedule.stream()
+                .noneMatch(item -> item.getDueDate().isBefore(LocalDate.now()) && item.getBalance().signum() > 0)) {
+            loan.setStatus(LoanStatus.ACTIVE);
+        }
         return repaymentResponse(payment, loan);
     }
 
@@ -647,12 +660,14 @@ public class LoanWorkflowService {
         int count = 0;
         for (Loan item : loans.findByGroupId(groupId)) {
             Loan l = requireForUpdate(item.getId(), groupId);
-            if (l.getStatus() != LoanStatus.ACTIVE)
+            if (l.getStatus() != LoanStatus.ACTIVE && l.getStatus() != LoanStatus.DEFAULTED)
                 continue;
             BigDecimal fine = l.getLateFineAtApplication() == null ? orZero(s.getLatePaymentFine())
                     : l.getLateFineAtApplication();
+            boolean hasOverdueBalance = false;
             for (LoanInstallment i : installments.findByLoanIdOrderByInstallmentNumberAsc(l.getId()))
                 if (i.getDueDate().isBefore(LocalDate.now()) && i.getPaidAmount().compareTo(i.getTotalAmount()) < 0) {
+                    hasOverdueBalance = true;
                     i.setStatus(InstallmentStatus.OVERDUE);
                     if (fine.signum() > 0 && i.getPenaltyAmount().signum() == 0) {
                         i.setPenaltyAmount(fine);
@@ -660,6 +675,7 @@ public class LoanWorkflowService {
                         count++;
                     }
                 }
+            if (hasOverdueBalance) l.setStatus(LoanStatus.DEFAULTED);
         }
         return count;
     }

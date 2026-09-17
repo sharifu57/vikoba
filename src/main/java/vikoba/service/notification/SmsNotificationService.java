@@ -12,12 +12,12 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClientResponseException;
 import vikoba.service.auth.entity.User;
 import vikoba.service.auth.repository.UserRepository;
 import vikoba.service.common.entity.Notification;
 import vikoba.service.common.enums.NotificationType;
 import vikoba.service.common.repository.NotificationRepository;
-import vikoba.service.common.service.SystemSettingService;
 import vikoba.service.config.SystemEnv;
 
 import java.time.LocalDateTime;
@@ -38,7 +38,6 @@ public class SmsNotificationService {
     private final SystemEnv dbEnv;
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
-    private final SystemSettingService systemSettingService;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
 
@@ -59,6 +58,7 @@ public class SmsNotificationService {
             return false;
         }
 
+        String normalizedPhone = normalizePhone(customerPhone);
         Notification notification = notificationRepository.save(Notification.builder()
                 .user(user)
                 .title("Vikoba notification")
@@ -66,11 +66,14 @@ public class SmsNotificationService {
                 .type(NotificationType.INFO)
                 .channel("SMS")
                 .deliveryStatus("PENDING")
-                .recipientPhone(customerPhone)
+                .recipientPhone(normalizedPhone)
                 .build());
 
         try {
-            SmsJob job = new SmsJob(notification.getId(), customerPhone, message, 0);
+            SmsJob job = new SmsJob(notification.getId(), normalizedPhone, recipientName(user), message, 0);
+            if (!dbEnv.smsKafkaEnabled) {
+                return deliver(job, false);
+            }
             String payload = objectMapper.writeValueAsString(job);
 
             kafkaTemplate.send(TOPIC, notification.getId().toString(), payload)
@@ -96,27 +99,30 @@ public class SmsNotificationService {
         }
     }
 
-    @KafkaListener(topics = TOPIC, groupId = "${spring.kafka.consumer.group-id:vikoba360-sms}")
+    @KafkaListener(topics = TOPIC, groupId = "${spring.kafka.consumer.group-id:vikoba360-sms}",
+            autoStartup = "${sms.kafka.enabled:false}")
     public void consume(String payload) {
         try {
             SmsJob job = objectMapper.readValue(payload, SmsJob.class);
-            deliver(job);
+            deliver(job, true);
         } catch (Exception e) {
             log.error("Invalid SMS queue message", e);
         }
     }
 
-    @KafkaListener(topics = RETRY_TOPIC, groupId = "${spring.kafka.consumer.group-id:vikoba360-sms-retry}")
+    @KafkaListener(topics = RETRY_TOPIC, groupId = "${spring.kafka.consumer.group-id:vikoba360-sms-retry}",
+            autoStartup = "${sms.kafka.enabled:false}")
     public void consumeRetry(String payload) {
         try {
             SmsJob job = objectMapper.readValue(payload, SmsJob.class);
-            deliver(job);
+            deliver(job, true);
         } catch (Exception e) {
             log.error("Invalid SMS retry message", e);
         }
     }
 
-    @KafkaListener(topics = DLQ_TOPIC, groupId = "${spring.kafka.consumer.group-id:vikoba360-sms-dlq}")
+    @KafkaListener(topics = DLQ_TOPIC, groupId = "${spring.kafka.consumer.group-id:vikoba360-sms-dlq}",
+            autoStartup = "${sms.kafka.enabled:false}")
     public void consumeDlq(String payload) {
         try {
             SmsJob job = objectMapper.readValue(payload, SmsJob.class);
@@ -133,28 +139,28 @@ public class SmsNotificationService {
         }
     }
 
-    private void deliver(SmsJob job) {
+    private boolean deliver(SmsJob job, boolean queueRetries) {
         Notification notification = notificationRepository.findById(job.notificationId()).orElse(null);
         if (notification == null) {
-            return;
+            return false;
         }
 
-        String senderIdentity = systemSettingService.get("sms.sender.id", dbEnv.senderId);
+        String senderIdentity = dbEnv.senderId;
         if (dbEnv.smsApiKey == null || dbEnv.smsApiKey.isBlank()) {
             notification.setDeliveryStatus("FAILED");
             notification.setProviderResponse("SMS provider secret is not configured");
             notificationRepository.save(notification);
-            return;
+            return false;
         }
 
         try {
             Map<String, Object> payload = new HashMap<>();
             payload.put("message", job.message());
             payload.put("senderIdentity", senderIdentity);
-            payload.put("callbackUrl", "");
+            payload.put("callbackUrl", dbEnv.smsCallbackUrl);
             payload.put("recipients", List.of(Map.of(
                     "phoneNumber", job.phone(),
-                    "name", "")));
+                    "name", job.name() == null ? "Member" : job.name())));
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -164,23 +170,35 @@ public class SmsNotificationService {
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
 
             ResponseEntity<Map> response = restTemplate.exchange(
-                    systemSettingService.get("sms.dispatch.url", dbEnv.smsUrl),
+                    dbEnv.smsUrl,
                     HttpMethod.POST,
                     request,
                     Map.class);
+
+            log.info("SMS provider responded with status {} for notification {}", response.getStatusCode(),
+                    notification.getId());
 
             if (response.getStatusCode().is2xxSuccessful()) {
                 notification.setDeliveryStatus("SENT");
                 notification.setProviderResponse(String.valueOf(response.getBody()));
                 notification.setSentAt(LocalDateTime.now());
                 notificationRepository.save(notification);
-                return;
+                return true;
             }
 
             throw new IllegalStateException(
                     "Provider returned status " + response.getStatusCode() + ": " + response.getBody());
         } catch (Exception e) {
-            handleDeliveryFailure(job, notification, e);
+            if (queueRetries) {
+                handleDeliveryFailure(job, notification, e);
+            } else {
+                notification.setDeliveryStatus("FAILED");
+                notification.setProviderResponse(providerError(e));
+                notificationRepository.save(notification);
+                log.warn("Direct SMS delivery failed for notification {} to {}: {}", notification.getId(),
+                        job.phone(), providerError(e));
+            }
+            return false;
         }
     }
 
@@ -195,7 +213,7 @@ public class SmsNotificationService {
 
             try {
                 kafkaTemplate.send(RETRY_TOPIC, job.notificationId().toString(), objectMapper.writeValueAsString(
-                        new SmsJob(job.notificationId(), job.phone(), job.message(), nextAttempt)))
+                        new SmsJob(job.notificationId(), job.phone(), job.name(), job.message(), nextAttempt)))
                         .whenComplete((result, throwable) -> {
                             if (throwable != null) {
                                 log.warn("Failed to enqueue SMS retry for notification {} to {}", job.notificationId(),
@@ -231,6 +249,29 @@ public class SmsNotificationService {
         log.warn("Failed to send SMS to {} after {} retries: {}", job.phone(), MAX_RETRIES, e.getMessage(), e);
     }
 
-    private record SmsJob(Long notificationId, String phone, String message, int attempt) {
+    private String normalizePhone(String phone) {
+        String normalized = phone.replaceAll("[^0-9]", "");
+        if (normalized.startsWith("0") && normalized.length() == 10) {
+            return "255" + normalized.substring(1);
+        }
+        return normalized;
+    }
+
+    private String recipientName(User user) {
+        if (user.getUsername() != null && !user.getUsername().isBlank()) {
+            return user.getUsername();
+        }
+        return "Member";
+    }
+
+    private String providerError(Exception exception) {
+        if (exception instanceof RestClientResponseException responseException) {
+            return "SMS provider returned " + responseException.getStatusCode() + ": "
+                    + responseException.getResponseBodyAsString();
+        }
+        return "SMS provider request failed: " + exception.getMessage();
+    }
+
+    private record SmsJob(Long notificationId, String phone, String name, String message, int attempt) {
     }
 }

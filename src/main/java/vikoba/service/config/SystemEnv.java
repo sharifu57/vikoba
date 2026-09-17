@@ -16,4 +16,10 @@ public class SystemEnv {
 
     @Value("${sms.dispatch.url}")
     public String smsUrl;
+
+    @Value("${sms.callback.url:}")
+    public String smsCallbackUrl;
+
+    @Value("${sms.kafka.enabled:false}")
+    public boolean smsKafkaEnabled;
 }

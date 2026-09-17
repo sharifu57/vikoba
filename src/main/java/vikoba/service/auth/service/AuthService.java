@@ -88,7 +88,12 @@ public class AuthService {
 
                 }
 
-                createLoginOtp(user);
+                if (!createLoginOtp(user)) {
+                        return new AuthResponse<>(
+                                        false,
+                                        "OTP was generated but the SMS provider rejected delivery. Please try again.",
+                                        null);
+                }
 
                 return new AuthResponse<>(
                                 true,
@@ -216,7 +221,11 @@ public class AuthService {
                         return new AuthResponse<>(false, "Your account has been disabled.", null);
                 }
 
-                createOtp(user, purpose);
+                if (!createOtp(user, purpose)) {
+                        return new AuthResponse<>(false,
+                                        "OTP was generated but the SMS provider rejected delivery. Please try again.",
+                                        null);
+                }
                 return new AuthResponse<>(true, "OTP resent successfully.", null);
         }
 
@@ -561,11 +570,11 @@ public class AuthService {
                 return order.stream().filter(roles::contains).findFirst().orElse("MEMBER");
         }
 
-        private void createLoginOtp(User user) {
-                createOtp(user, "login");
+        private boolean createLoginOtp(User user) {
+                return createOtp(user, "login");
         }
 
-        private void createOtp(User user, String purpose) {
+        private boolean createOtp(User user, String purpose) {
                 OTP otp = new OTP();
                 otp.setPhone(user.getPhone());
                 otp.setUser(user);
@@ -585,5 +594,6 @@ public class AuthService {
                 if (!sent) {
                         log.warn("OTP generated but SMS delivery failed for {}", user.getPhone());
                 }
+                return sent;
         }
 }
