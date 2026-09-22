@@ -9,6 +9,7 @@ import vikoba.service.social.service.SocialFundService;
 
 import java.math.BigDecimal;
 import java.util.List;
+import vikoba.service.organization.dto.ShareApprovalStepConfig;
 
 @RestController
 @RequiredArgsConstructor
@@ -65,5 +66,16 @@ public class SocialFundController {
     public ResponseEntity<ApiResponse<SocialFundRequestResponse>> pay(@PathVariable Long groupId,
             @PathVariable Long requestId) {
         return ResponseEntity.ok(ApiResponse.success("Jamii request paid.", service.pay(groupId, requestId)));
+    }
+
+    @GetMapping("/group/{groupId}/approval-config")
+    public ResponseEntity<ApiResponse<List<ShareApprovalStepConfig>>> approvalConfig(@PathVariable Long groupId) {
+        return ResponseEntity.ok(ApiResponse.success("Jamii approval workflow retrieved.", service.approvalConfig(groupId)));
+    }
+
+    @PutMapping("/group/{groupId}/approval-config")
+    public ResponseEntity<ApiResponse<List<ShareApprovalStepConfig>>> configureApproval(@PathVariable Long groupId,
+            @RequestBody List<ShareApprovalStepConfig> steps) {
+        return ResponseEntity.ok(ApiResponse.success("Jamii approval workflow saved.", service.configureApproval(groupId, steps)));
     }
 }

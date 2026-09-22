@@ -59,4 +59,7 @@ public class SocialFundRequest extends BaseEntity {
 
     @Column(name = "approved_date")
     private LocalDate approvedDate;
+
+    @Column(name = "approval_steps_json", columnDefinition = "TEXT")
+    private String approvalStepsJson;
 }

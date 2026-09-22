@@ -22,4 +22,10 @@ public class SocialFundRequestResponse {
     private String status;
     private LocalDate requestedDate;
     private LocalDate approvedDate;
+    private java.util.List<vikoba.service.contribution.dto.ShareApprovalStep> approvalSteps;
+    private String currentStepRole;
+    private String currentStepLabel;
+    private boolean canApprove;
+    private boolean canReject;
+    private boolean canDisburse;
 }
