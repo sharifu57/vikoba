@@ -99,6 +99,44 @@ public class SmsNotificationService {
         }
     }
 
+    /**
+     * Sends an SMS to a group member even when that member does not yet have a
+     * login account. Meeting invitations use this path because membership, not
+     * application registration, determines who must be notified.
+     */
+    public boolean sendToPhone(String customerPhone, String recipientName, String message) {
+        if (customerPhone == null || customerPhone.trim().isEmpty()) {
+            log.warn("SMS not sent: phone number is empty");
+            return false;
+        }
+        if (message == null || message.trim().isEmpty()) {
+            log.warn("SMS not sent: message is empty");
+            return false;
+        }
+        if (dbEnv.smsApiKey == null || dbEnv.smsApiKey.isBlank()) {
+            log.warn("SMS not sent to {}: provider secret is not configured", customerPhone);
+            return false;
+        }
+
+        String normalizedPhone = normalizePhone(customerPhone);
+        String name = recipientName == null || recipientName.isBlank() ? "Member" : recipientName.trim();
+        try {
+            ResponseEntity<Map> response = dispatch(normalizedPhone, name, message);
+            boolean accepted = response.getStatusCode().is2xxSuccessful();
+            if (accepted) {
+                log.info("SMS provider accepted direct message to {} with status {}", normalizedPhone,
+                        response.getStatusCode());
+            } else {
+                log.warn("SMS provider rejected direct message to {} with status {}", normalizedPhone,
+                        response.getStatusCode());
+            }
+            return accepted;
+        } catch (Exception e) {
+            log.warn("Direct SMS delivery failed to {}: {}", normalizedPhone, providerError(e));
+            return false;
+        }
+    }
+
     @KafkaListener(topics = TOPIC, groupId = "${spring.kafka.consumer.group-id:vikoba360-sms}",
             autoStartup = "${sms.kafka.enabled:false}")
     public void consume(String payload) {
@@ -154,26 +192,7 @@ public class SmsNotificationService {
         }
 
         try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("message", job.message());
-            payload.put("senderIdentity", senderIdentity);
-            payload.put("callbackUrl", dbEnv.smsCallbackUrl);
-            payload.put("recipients", List.of(Map.of(
-                    "phoneNumber", job.phone(),
-                    "name", job.name() == null ? "Member" : job.name())));
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("apiKey", dbEnv.smsApiKey);
-            headers.set("senderIdentity", senderIdentity);
-
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-
-            ResponseEntity<Map> response = restTemplate.exchange(
-                    dbEnv.smsUrl,
-                    HttpMethod.POST,
-                    request,
-                    Map.class);
+            ResponseEntity<Map> response = dispatch(job.phone(), job.name(), job.message());
 
             log.info("SMS provider responded with status {} for notification {}", response.getStatusCode(),
                     notification.getId());
@@ -200,6 +219,28 @@ public class SmsNotificationService {
             }
             return false;
         }
+    }
+
+    private ResponseEntity<Map> dispatch(String phone, String name, String message) {
+        String senderIdentity = dbEnv.senderId;
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("message", message);
+        payload.put("senderIdentity", senderIdentity);
+        payload.put("callbackUrl", dbEnv.smsCallbackUrl == null ? "" : dbEnv.smsCallbackUrl);
+        payload.put("recipients", List.of(Map.of(
+                "phoneNumber", phone,
+                "name", name == null || name.isBlank() ? "Member" : name)));
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("apiKey", dbEnv.smsApiKey);
+        headers.set("senderIdentity", senderIdentity);
+
+        return restTemplate.exchange(
+                dbEnv.smsUrl,
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class);
     }
 
     private void handleDeliveryFailure(SmsJob job, Notification notification, Exception e) {

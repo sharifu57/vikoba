@@ -95,12 +95,13 @@ public class MemberService {
 
                 String email = blankToNull(request.getEmail());
 
-                // ============================================================
-                // 4. CHECK IF MEMBER ALREADY EXISTS
-                // ============================================================
-
-                Member member = memberRepository.findByPhone(phone)
-                                .orElse(null);
+                // A phone identifies one login/person, while membership is unique
+                // only inside a group. Resolve the login first so legacy duplicate
+                // member rows cannot make a valid cross-group invitation fail.
+                User user = userRepository.findByPhone(phone).orElse(null);
+                Member member = user != null && user.getMember() != null
+                                ? user.getMember()
+                                : memberRepository.findByPhone(phone).orElse(null);
 
                 if (member != null) {
 
@@ -177,9 +178,6 @@ public class MemberService {
                 // 5. CREATE OR LINK USER ACCOUNT
                 // ============================================================
 
-                User user = userRepository.findByPhone(phone)
-                                .orElse(null);
-
                 if (user == null) {
 
                         // --------------------------------------------------------
@@ -218,11 +216,6 @@ public class MemberService {
 
                                 userRepository.save(user);
 
-                        } else if (!user.getMember().getId()
-                                        .equals(member.getId())) {
-
-                                throw new IllegalArgumentException(
-                                                "This phone number is already associated with another member account.");
                         }
                 }
 

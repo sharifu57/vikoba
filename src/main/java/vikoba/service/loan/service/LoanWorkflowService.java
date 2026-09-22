@@ -21,11 +21,12 @@ import vikoba.service.organization.repository.*;
 import java.math.*;
 import java.time.*;
 import java.util.*;
-import vikoba.service.notification.SmsNotificationService;
 import vikoba.service.organization.service.GroupAuthorizationService;
 import vikoba.service.organization.service.LoanApprovalWorkflowService;
 import vikoba.service.organization.dto.ShareApprovalStepConfig;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.context.ApplicationEventPublisher;
+import vikoba.service.notification.SmsNotificationRequestedEvent;
 
 @Service
 @RequiredArgsConstructor
@@ -43,13 +44,13 @@ public class LoanWorkflowService {
     private final FineTypeRepository fineTypes;
     private final LoanGuarantorRepository guarantors;
     private final GroupSettingsRepository groupSettingsRepository;
-    private final SmsNotificationService smsNotificationService;
     private final GroupAuthorizationService authorizationService;
     private final LoanApprovalWorkflowService loanApprovalWorkflow;
     private final LoanApprovalStepRepository approvalSteps;
     private final LoanApprovalEventRepository approvalEvents;
     private final MemberRoleRepository memberRoles;
     private final AccountingService accountingService;
+    private final ApplicationEventPublisher eventPublisher;
 
     private static final List<LoanStatus> OPEN_STATUSES = List.of(LoanStatus.PENDING, LoanStatus.UNDER_REVIEW,
             LoanStatus.APPROVED, LoanStatus.DISBURSED, LoanStatus.ACTIVE, LoanStatus.DEFAULTED);
@@ -265,12 +266,19 @@ public class LoanWorkflowService {
         BigDecimal amountPerGuarantor = guarantorIds.isEmpty() ? BigDecimal.ZERO
                 : amount.divide(BigDecimal.valueOf(guarantorIds.size()), 2, RoundingMode.HALF_UP);
         for (Long guarantorId : guarantorIds) {
+            GroupMember guarantor = members.findById(guarantorId).orElseThrow();
             guarantors.save(LoanGuarantor.builder()
                     .loan(loan)
-                    .groupMember(members.findById(guarantorId).orElseThrow())
+                    .groupMember(guarantor)
                     .guaranteedAmount(amountPerGuarantor)
                     .build());
+            notifyMember(guarantor, "VIKOBA360: Umeombwa kuwa mdhamini wa mkopo " + loan.getLoanNumber()
+                    + " wa " + memberName(member) + ", kiasi TZS " + amount.toPlainString()
+                    + ". Ingia kwenye mfumo ukubali au ukatae ombi hili.");
         }
+
+        notifyMember(member, "VIKOBA360: Ombi lako la mkopo " + loan.getLoanNumber()
+                + " la TZS " + amount.toPlainString() + " limewasilishwa. Tutakujulisha kila hatua.");
 
         if (loan.getStatus() == LoanStatus.UNDER_REVIEW) steps(loan);
         return response(loan);
@@ -331,6 +339,11 @@ public class LoanWorkflowService {
             loan.setStatus(LoanStatus.UNDER_REVIEW);
             steps(loan);
         }
+        notifyMember(loan.getGroupMember(), "VIKOBA360: Mdhamini " + memberName(self) + " "
+                + (accept ? "amekubali" : "amekataa") + " kudhamini mkopo wako " + loan.getLoanNumber()
+                + (accept && loan.getStatus() == LoanStatus.UNDER_REVIEW
+                        ? ". Wadhamini wote wamekubali; ombi limeingia kwenye hatua za uidhinishaji."
+                        : ". Ingia kwenye mfumo kuona maelezo."));
         return response(loan);
     }
 
@@ -351,9 +364,13 @@ public class LoanWorkflowService {
         validateGuarantors(groupId, self, List.of(replacementId), 1);
         guarantors.delete(rejected);
         guarantors.flush();
+        GroupMember replacement = members.findById(replacementId).orElseThrow();
         guarantors.save(LoanGuarantor.builder().loan(loan)
-                .groupMember(members.findById(replacementId).orElseThrow())
+                .groupMember(replacement)
                 .guaranteedAmount(rejected.getGuaranteedAmount()).build());
+        notifyMember(replacement, "VIKOBA360: Umeombwa kuwa mdhamini mbadala wa mkopo "
+                + loan.getLoanNumber() + " wa " + memberName(self)
+                + ". Ingia kwenye mfumo ukubali au ukatae ombi hili.");
         return response(loan);
     }
 
@@ -449,9 +466,15 @@ public class LoanWorkflowService {
         step.setApprovedByMemberId(actorId);
         approvalSteps.save(step);
         event(l, step.getStepOrder(), "APPROVED", null, actorId);
-        if (approvalSteps.findByLoanIdOrderByStepOrderAsc(id).stream().allMatch(item -> item.getApprovedAt() != null)) {
+        boolean finalApproval = approvalSteps.findByLoanIdOrderByStepOrderAsc(id).stream()
+                .allMatch(item -> item.getApprovedAt() != null);
+        if (finalApproval) {
             l.setApprovalDate(LocalDate.now());
             activateLoan(l);
+        } else {
+            notifyMember(l.getGroupMember(), "VIKOBA360: Ombi lako la mkopo " + l.getLoanNumber()
+                    + " limeidhinishwa katika hatua ya " + step.getLabel()
+                    + ". Linaendelea kwenye hatua inayofuata.");
         }
         return response(l);
     }
@@ -471,6 +494,9 @@ public class LoanWorkflowService {
         approvalSteps.save(previous);
         event(l, current.getStepOrder(), "RETURNED", required(request.getRejectionReason(), "return reason"),
                 authorizationService.requireCurrentMembership(groupId).getId());
+        notifyMember(l.getGroupMember(), "VIKOBA360: Ombi lako la mkopo " + l.getLoanNumber()
+                + " limerudishwa kwa mapitio. Sababu: " + request.getRejectionReason().trim()
+                + ". Ingia kwenye mfumo kuona hatua inayofuata.");
         return response(l);
     }
 
@@ -484,6 +510,8 @@ public class LoanWorkflowService {
         l.setStatus(LoanStatus.REJECTED);
         l.setRejectionReason(reason);
         event(l, step.getStepOrder(), "REJECTED", reason, authorizationService.requireCurrentMembership(groupId).getId());
+        notifyMember(l.getGroupMember(), "VIKOBA360: Ombi lako la mkopo " + l.getLoanNumber()
+                + " limekataliwa. Sababu: " + reason + ".");
         return response(l);
     }
 
@@ -498,6 +526,8 @@ public class LoanWorkflowService {
         String reason = request == null ? null : request.getRejectionReason();
         l.setRejectionReason(reason);
         event(l, null, "CANCELLED", reason, actor.getId());
+        notifyMember(l.getGroupMember(), "VIKOBA360: Ombi la mkopo " + l.getLoanNumber()
+                + " limefutwa" + (reason == null || reason.isBlank() ? "." : ". Sababu: " + reason + "."));
         return response(l);
     }
 
@@ -523,7 +553,7 @@ public class LoanWorkflowService {
         l.setMaturityDate(LocalDate.now().plusMonths(l.getDurationMonths()));
         createSchedule(l);
         postDisbursement(l);
-        smsNotificationService.send(l.getGroupMember().getMember().getPhone(), "VIKOBA360: Hongera! Mkopo "
+        notifyMember(l.getGroupMember(), "VIKOBA360: Hongera! Mkopo "
                 + l.getLoanNumber() + " umetolewa kwa TZS " + l.getPrincipalAmount().toPlainString()
                 + ". Angalia ratiba ya marejesho kwenye akaunti yako.");
     }
@@ -575,6 +605,8 @@ public class LoanWorkflowService {
                 .paymentDate(LocalDateTime.now()).description("Loan repayment awaiting accountant approval for " + l.getLoanNumber()).build());
         paymentAllocations.save(PaymentAllocation.builder().payment(payment).type(PaymentAllocationType.LOAN_REPAYMENT)
                 .amount(amount).referenceId(l.getId()).description("Loan repayment " + l.getLoanNumber()).build());
+        notifyMember(l.getGroupMember(), "VIKOBA360: Marejesho ya mkopo " + l.getLoanNumber()
+                + " ya TZS " + amount.toPlainString() + " yamewasilishwa na yanasubiri uthibitisho wa mhasibu.");
         return repaymentResponse(payment, l);
     }
 
@@ -638,6 +670,9 @@ public class LoanWorkflowService {
                 .noneMatch(item -> item.getDueDate().isBefore(LocalDate.now()) && item.getBalance().signum() > 0)) {
             loan.setStatus(LoanStatus.ACTIVE);
         }
+        notifyMember(loan.getGroupMember(), "VIKOBA360: Marejesho ya TZS " + payment.getAmount().toPlainString()
+                + " kwa mkopo " + loan.getLoanNumber() + " yamethibitishwa"
+                + (loan.getStatus() == LoanStatus.COMPLETED ? ". Mkopo umelipwa kikamilifu." : "."));
         return repaymentResponse(payment, loan);
     }
 
@@ -650,6 +685,9 @@ public class LoanWorkflowService {
         payment.setReviewedAt(LocalDateTime.now());
         payment.setReviewedByMemberId(accountant.getId());
         payment.setRejectionReason(required(request.getRejectionReason(), "rejection reason"));
+        notifyMember(loan.getGroupMember(), "VIKOBA360: Marejesho ya TZS " + payment.getAmount().toPlainString()
+                + " kwa mkopo " + loan.getLoanNumber() + " yamekataliwa. Sababu: "
+                + payment.getRejectionReason() + ".");
         return repaymentResponse(payment, loan);
     }
 
@@ -665,7 +703,15 @@ public class LoanWorkflowService {
             BigDecimal fine = l.getLateFineAtApplication() == null ? orZero(s.getLatePaymentFine())
                     : l.getLateFineAtApplication();
             boolean hasOverdueBalance = false;
-            for (LoanInstallment i : installments.findByLoanIdOrderByInstallmentNumberAsc(l.getId()))
+            for (LoanInstallment i : installments.findByLoanIdOrderByInstallmentNumberAsc(l.getId())) {
+                BigDecimal balance = i.getTotalAmount().subtract(i.getPaidAmount()).max(BigDecimal.ZERO);
+                long daysUntilDue = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), i.getDueDate());
+                if ((daysUntilDue == 3 || daysUntilDue == 0) && balance.signum() > 0) {
+                    notifyMember(l.getGroupMember(), "VIKOBA360: Kumbusho, marejesho ya mkopo "
+                            + l.getLoanNumber() + " ya TZS " + balance.toPlainString()
+                            + (daysUntilDue == 0 ? " yanatakiwa kulipwa leo." : " yanatakiwa kulipwa baada ya siku 3.")
+                            + " Ingia kwenye mfumo kuona ratiba yako.");
+                }
                 if (i.getDueDate().isBefore(LocalDate.now()) && i.getPaidAmount().compareTo(i.getTotalAmount()) < 0) {
                     hasOverdueBalance = true;
                     i.setStatus(InstallmentStatus.OVERDUE);
@@ -673,8 +719,12 @@ public class LoanWorkflowService {
                         i.setPenaltyAmount(fine);
                         i.setTotalAmount(i.getTotalAmount().add(fine));
                         count++;
+                        notifyMember(l.getGroupMember(), "VIKOBA360: Mkopo " + l.getLoanNumber()
+                                + " umechelewa kulipwa. Umeongezewa faini ya TZS " + fine.toPlainString()
+                                + " kwa awamu ya tarehe " + i.getDueDate() + ".");
                     }
                 }
+            }
             if (hasOverdueBalance) l.setStatus(LoanStatus.DEFAULTED);
         }
         return count;
@@ -879,6 +929,21 @@ public class LoanWorkflowService {
 
     private BigDecimal orZero(BigDecimal n) {
         return n == null ? BigDecimal.ZERO : n;
+    }
+
+    private void notifyMember(GroupMember membership, String message) {
+        if (membership == null || membership.getMember() == null) return;
+        var person = membership.getMember();
+        if (person.getPhone() == null || person.getPhone().isBlank()) return;
+        eventPublisher.publishEvent(new SmsNotificationRequestedEvent(
+                person.getPhone(), memberName(membership), message));
+    }
+
+    private String memberName(GroupMember membership) {
+        if (membership == null || membership.getMember() == null) return "Member";
+        String name = ((membership.getMember().getFirstName() == null ? "" : membership.getMember().getFirstName())
+                + " " + (membership.getMember().getLastName() == null ? "" : membership.getMember().getLastName())).trim();
+        return name.isBlank() ? "Member" : name;
     }
 
     private String required(String v, String f) {

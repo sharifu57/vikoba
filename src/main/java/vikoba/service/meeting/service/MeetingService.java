@@ -3,6 +3,7 @@ package vikoba.service.meeting.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import vikoba.service.common.entity.Notification;
 import vikoba.service.common.enums.NotificationType;
@@ -15,6 +16,7 @@ import vikoba.service.meeting.dto.CreateMeetingRequest;
 import vikoba.service.meeting.entity.Meeting;
 import vikoba.service.meeting.entity.MeetingAttendance;
 import vikoba.service.meeting.entity.MeetingMinute;
+import vikoba.service.meeting.event.MeetingCreatedNotificationEvent;
 import vikoba.service.meeting.repository.MeetingAttendanceRepository;
 import vikoba.service.meeting.repository.MeetingMinuteRepository;
 import vikoba.service.meeting.repository.MeetingRepository;
@@ -35,6 +37,7 @@ import java.time.LocalTime;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.List;
+import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
@@ -50,6 +53,7 @@ public class MeetingService {
     private final FineRepository fineRepository;
     private final GroupSettingsRepository groupSettingsRepository;
     private final GroupAuthorizationService authorizationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public vikoba.service.meeting.dto.MeetingResponse createMeeting(Long groupId, CreateMeetingRequest request) {
@@ -103,10 +107,13 @@ public class MeetingService {
 
         Meeting saved = meetingRepository.save(m);
 
-        // Notify all group members with linked user accounts
+        // In-app notifications require a linked user account, but every active
+        // member with a phone number must receive the meeting SMS.
         var members = groupMemberRepository.findByGroupIdAndStatus(group.getId(),
                 vikoba.service.common.enums.MembershipStatus.ACTIVE);
+        var smsRecipients = new ArrayList<MeetingCreatedNotificationEvent.Recipient>();
         for (GroupMember gm : members) {
+            String memberName = (gm.getMember().getFirstName() + " " + gm.getMember().getLastName()).trim();
             var maybeUser = userRepository.findByMemberId(gm.getMember().getId());
             if (maybeUser.isPresent()) {
                 User user = maybeUser.get();
@@ -121,7 +128,17 @@ public class MeetingService {
                         .build();
                 notificationRepository.save(note);
             }
+
+            String smsPhone = maybeUser.map(User::getPhone)
+                    .filter(phone -> !phone.isBlank())
+                    .orElse(gm.getMember().getPhone());
+            if (smsPhone != null && !smsPhone.isBlank()) {
+                smsRecipients.add(new MeetingCreatedNotificationEvent.Recipient(smsPhone, memberName));
+            }
         }
+        eventPublisher.publishEvent(new MeetingCreatedNotificationEvent(
+                saved.getId(), group.getName(), saved.getTitle(), saved.getMeetingDate(), saved.getStartTime(),
+                saved.getMeetingMode(), saved.getLocation(), saved.getMeetingLink(), List.copyOf(smsRecipients)));
 
         // build response DTO while still in transaction so lazy properties are
         // accessible

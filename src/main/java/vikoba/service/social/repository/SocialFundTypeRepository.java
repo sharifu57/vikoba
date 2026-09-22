@@ -11,5 +11,7 @@ public interface SocialFundTypeRepository extends JpaRepository<SocialFundType, 
 
     Optional<SocialFundType> findByIdAndGroupId(Long id, Long groupId);
 
+    Optional<SocialFundType> findByGroupIdAndCode(Long groupId, String code);
+
     boolean existsByGroupIdAndCode(Long groupId, String code);
 }

@@ -8,6 +8,8 @@ import vikoba.service.social.entity.SocialFundContribution;
 import java.util.List;
 
 public interface SocialFundContributionRepository extends JpaRepository<SocialFundContribution, Long> {
+    boolean existsByReference(String reference);
+
     @Query("""
             SELECT s FROM SocialFundContribution s
             JOIN FETCH s.groupMember gm

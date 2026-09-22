@@ -24,6 +24,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import vikoba.service.notification.SmsNotificationService;
+import vikoba.service.social.service.SocialFundService;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +38,7 @@ public class ShareService {
     private final VikobaGroupRepository vikobaGroupRepository;
     private final PaymentService paymentService;
     private final SmsNotificationService smsNotificationService;
+    private final SocialFundService socialFundService;
 
     @Transactional(readOnly = true)
     public ShareSummaryResponse getSummary(Long groupId) {
@@ -127,6 +129,7 @@ public class ShareService {
             jamiiPayment.setAllocationReferenceId(saved.getId());
             jamiiPayment.setDescription("Jamii amount collected with share purchase");
             paymentService.record(groupId, jamiiPayment);
+            socialFundService.recordShareContribution(member, request.getJamiiAmount(), jamiiPayment.getReference());
         }
         smsNotificationService.send(member.getMember().getPhone(), "VIKOBA360: Hongera! Ununuzi wa hisa "
                 + quantity + " umepokelewa kwa TZS " + amount.toPlainString() + ". Asante kwa kuweka akiba.");
