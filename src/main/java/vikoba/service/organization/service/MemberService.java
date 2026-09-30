@@ -291,6 +291,14 @@ public class MemberService {
                 return toResponse(authorizationService.requireCurrentMembership(groupId));
         }
 
+        @Transactional(readOnly = true)
+        public MemberResponse getDashboardMember(Long groupMemberId) {
+                GroupMember membership = groupMemberRepository.findById(groupMemberId)
+                                .orElseThrow(() -> new IllegalArgumentException("Member not found."));
+                authorizationService.requireSelfOrGroupDashboardAccess(membership.getGroup().getId(), groupMemberId);
+                return toResponse(membership);
+        }
+
         public List<MemberRoleOptionResponse> getMemberRoles() {
                 return roleRepository.findAll().stream()
                                 .filter(role -> isGroupRole(role.getName()))

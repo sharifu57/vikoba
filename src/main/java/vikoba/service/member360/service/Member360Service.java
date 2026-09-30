@@ -119,16 +119,7 @@ public class Member360Service {
          * received by this endpoint. memberId is the underlying Member ID.
          */
 
-        MemberResponse memberResponse =
-                memberService
-                        .getMembersByGroup(group.getId())
-                        .stream()
-                        .filter(m ->
-                                m.getId() != null
-                                        && m.getId().equals(groupMemberId)
-                        )
-                        .findFirst()
-                        .orElse(null);
+        MemberResponse memberResponse = memberService.getDashboardMember(groupMemberId);
 
 
         // ============================================================
