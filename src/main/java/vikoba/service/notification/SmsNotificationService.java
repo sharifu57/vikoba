@@ -139,6 +139,10 @@ public class SmsNotificationService {
             return;
         }
 
+        log.info("============SENDER ID::" + dbEnv.senderId);
+        log.info("============API KEY:::" + dbEnv.smsApiKey);
+        log.info("============SMS URL:::" + dbEnv.smsUrl);
+
         String senderIdentity = systemSettingService.get("sms.sender.id", dbEnv.senderId);
         if (dbEnv.smsApiKey == null || dbEnv.smsApiKey.isBlank()) {
             notification.setDeliveryStatus("FAILED");
