@@ -579,9 +579,8 @@ public class AuthService {
                 otpRepository.save(otp);
                 boolean sent = smsNotificationService.send(
                                 user.getPhone(),
-                                "Karibu VIKOBA360! Namba yako ya uthibitisho (OTP) ni "
-                                                + otp.getCode()
-                                                + ". Itatumika kwa dakika 5 tu. Usimshirikishe mtu yeyote.");
+                                "VIKOBA360 verification code: " + otp.getCode()
+                                                + "\nNamba ya uthibitisho. Inaisha baada ya dakika 5. Usimpe mtu yeyote.");
                 if (!sent) {
                         log.warn("OTP generated but SMS delivery failed for {}", user.getPhone());
                 }

@@ -117,9 +117,12 @@ public class LoanWorkflowService {
         return products.findByGroupIdAndActiveTrueOrderByNameAsc(groupId).stream().map(this::productResponse).toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<LoanInstallmentResponse> schedule(Long groupId, Long loanId) {
-        return schedule(require(loanId, groupId));
+        Loan loan = requireForUpdate(loanId, groupId);
+        authorizationService.requireSelfOrGroupDashboardAccess(groupId, loan.getGroupMember().getId());
+        assessLoanOverdue(loan, LocalDate.now(ZoneId.of("Africa/Dar_es_Salaam")));
+        return schedule(loan);
     }
 
     @Transactional
@@ -541,18 +544,21 @@ public class LoanWorkflowService {
 
     @Transactional
     public LoanResponse repay(Long groupId, Long id, LoanRepaymentRequest r) {
+        authorizationService.requirePermission(groupId, "LOAN_MANAGE");
         Loan l = requireForUpdate(id, groupId);
         if (l.getStatus() != LoanStatus.ACTIVE && l.getStatus() != LoanStatus.DEFAULTED)
             throw new IllegalArgumentException("This loan is not open for repayment.");
+        assessLoanOverdue(l, LocalDate.now(ZoneId.of("Africa/Dar_es_Salaam")));
         BigDecimal left = positive(r.getAmount(), "repayment amount");
         for (LoanInstallment i : installments.findByLoanIdOrderByInstallmentNumberAsc(id)) {
             if (left.signum() <= 0)
                 break;
-            BigDecimal due = i.getTotalAmount().subtract(i.getPaidAmount()), paid = left.min(due);
+            BigDecimal due = i.getTotalAmount().subtract(i.getPaidAmount()).max(BigDecimal.ZERO), paid = left.min(due);
             i.setPaidAmount(i.getPaidAmount().add(paid));
             left = left.subtract(paid);
             i.setStatus(i.getPaidAmount().compareTo(i.getTotalAmount()) >= 0 ? InstallmentStatus.PAID
-                    : InstallmentStatus.PARTIAL);
+                    : i.getDueDate().isBefore(LocalDate.now(ZoneId.of("Africa/Dar_es_Salaam")))
+                        ? InstallmentStatus.OVERDUE : InstallmentStatus.PARTIAL);
         }
         if (left.signum() > 0)
             throw new IllegalArgumentException("Repayment exceeds the outstanding loan balance.");
@@ -563,24 +569,37 @@ public class LoanWorkflowService {
 
     @Transactional
     public int assessOverdue(Long groupId) {
-        GroupSettings s = settings.findByGroupId(groupId)
-                .orElseThrow(() -> new IllegalArgumentException("Loan settings not found."));
         int count = 0;
+        LocalDate today = LocalDate.now(ZoneId.of("Africa/Dar_es_Salaam"));
         for (Loan item : loans.findByGroupId(groupId)) {
-            Loan l = requireForUpdate(item.getId(), groupId);
-            if (l.getStatus() != LoanStatus.ACTIVE)
-                continue;
-            BigDecimal fine = l.getLateFineAtApplication() == null ? orZero(s.getLatePaymentFine())
-                    : l.getLateFineAtApplication();
-            for (LoanInstallment i : installments.findByLoanIdOrderByInstallmentNumberAsc(l.getId()))
-                if (i.getDueDate().isBefore(LocalDate.now()) && i.getPaidAmount().compareTo(i.getTotalAmount()) < 0) {
-                    i.setStatus(InstallmentStatus.OVERDUE);
-                    if (fine.signum() > 0 && i.getPenaltyAmount().signum() == 0) {
-                        i.setPenaltyAmount(fine);
-                        i.setTotalAmount(i.getTotalAmount().add(fine));
-                        count++;
-                    }
+            Loan loan = requireForUpdate(item.getId(), groupId);
+            count += assessLoanOverdue(loan, today);
+        }
+        return count;
+    }
+
+    // All callers hold the loan write lock. The installment penalty is the
+    // payable charge; creating a second fine would charge the member twice.
+    int assessLoanOverdue(Loan loan, LocalDate today) {
+        if (loan.getStatus() != LoanStatus.ACTIVE && loan.getStatus() != LoanStatus.DEFAULTED) return 0;
+        BigDecimal fine = loan.getLateFineAtApplication();
+        if (fine == null) {
+            fine = settings.findByGroupId(loan.getGroupMember().getGroup().getId())
+                    .map(setting -> orZero(setting.getLatePaymentFine()))
+                    .orElseThrow(() -> new IllegalArgumentException("Loan settings not found."));
+        }
+        int count = 0;
+        for (LoanInstallment installment : installments.findByLoanIdOrderByInstallmentNumberAsc(loan.getId())) {
+            if (installment.getDueDate().isBefore(today)
+                    && installment.getPaidAmount().compareTo(installment.getTotalAmount()) < 0) {
+                installment.setStatus(InstallmentStatus.OVERDUE);
+                if (fine.signum() > 0 && orZero(installment.getPenaltyAmount()).signum() == 0) {
+                    installment.setPenaltyAmount(fine);
+                    installment.setTotalAmount(installment.getTotalAmount().add(fine));
+                    count++;
                 }
+                installments.save(installment);
+            }
         }
         return count;
     }

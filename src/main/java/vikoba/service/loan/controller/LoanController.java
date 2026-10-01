@@ -14,6 +14,7 @@ import java.util.*;
 @RequestMapping("/api/loans/group/{groupId}")
 public class LoanController {
     private final LoanWorkflowService service;
+    private final vikoba.service.organization.service.GroupAuthorizationService authorizationService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<LoanResponse>>> list(@PathVariable Long groupId) {
@@ -116,6 +117,7 @@ public class LoanController {
 
     @PostMapping("/assess-overdue")
     public ResponseEntity<ApiResponse<Integer>> overdue(@PathVariable Long groupId) {
+        authorizationService.requirePermission(groupId, "LOAN_MANAGE");
         return ResponseEntity.ok(ApiResponse.success("Overdue installments assessed.", service.assessOverdue(groupId)));
     }
 

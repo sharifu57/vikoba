@@ -8,6 +8,7 @@ import vikoba.service.meeting.entity.MeetingAttendance;
 import java.util.List;
 
 public interface MeetingAttendanceRepository extends JpaRepository<MeetingAttendance, Long> {
+    java.util.Optional<MeetingAttendance> findByMeetingIdAndGroupMemberId(Long meetingId, Long groupMemberId);
 //    @Query("""
 //                SELECT ma
 //                FROM MeetingAttendance ma

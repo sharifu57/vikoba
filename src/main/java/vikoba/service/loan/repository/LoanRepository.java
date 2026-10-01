@@ -16,7 +16,7 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
     @Query("select coalesce(sum(l.principalAmount), 0) from Loan l where l.status in ('DISBURSED', 'ACTIVE', 'COMPLETED', 'DEFAULTED')")
     BigDecimal sumIssuedAmount();
 
-    @Query("select distinct l.groupMember.group.id from Loan l where l.status = 'ACTIVE'")
+    @Query("select distinct l.groupMember.group.id from Loan l where l.status in ('ACTIVE', 'DEFAULTED')")
     java.util.List<Long> findActiveLoanGroupIds();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
