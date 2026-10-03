@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vikoba.service.common.enums.SocialFundRequestStatus;
+import vikoba.service.organization.dto.ShareApprovalStepConfig;
+import vikoba.service.organization.service.ShareApprovalWorkflowService;
 import vikoba.service.social.dto.*;
 import vikoba.service.social.entity.*;
 import vikoba.service.social.repository.*;
@@ -24,6 +26,7 @@ public class SocialFundService {
     private final SocialFundContributionRepository contributionRepository;
     private final GroupMemberRepository memberRepository;
     private final VikobaGroupRepository groupRepository;
+    private final ShareApprovalWorkflowService shareApprovalWorkflowService;
 
     @Transactional(readOnly = true)
     public java.util.List<SocialFundTypeResponse> types(Long groupId) {
@@ -51,6 +54,21 @@ public class SocialFundService {
                 .defaultContribution(contribution).mandatory(Boolean.TRUE.equals(input.getMandatory()))
                 .active(true).build());
         return typeResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<ShareApprovalStepConfig> approvalConfig(Long groupId) {
+        groupRepository.findById(groupId).orElseThrow(() -> new IllegalArgumentException("Group not found."));
+        return shareApprovalWorkflowService.get(groupId);
+    }
+
+    @Transactional
+    public java.util.List<ShareApprovalStepConfig> configureApproval(Long groupId,
+            java.util.List<ShareApprovalStepConfig> steps) {
+        var group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalArgumentException("Group not found."));
+        shareApprovalWorkflowService.configure(group, steps);
+        return shareApprovalWorkflowService.get(groupId);
     }
 
     @Transactional(readOnly = true)

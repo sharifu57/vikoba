@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vikoba.service.common.response.ApiResponse;
+import vikoba.service.organization.dto.ShareApprovalStepConfig;
 import vikoba.service.social.dto.*;
 import vikoba.service.social.service.SocialFundService;
 
@@ -25,6 +26,19 @@ public class SocialFundController {
     public ResponseEntity<ApiResponse<SocialFundTypeResponse>> createType(@PathVariable Long groupId,
             @RequestBody SocialFundTypeInput input) {
         return ResponseEntity.ok(ApiResponse.success("Jamii fund type created.", service.createType(groupId, input)));
+    }
+
+    @GetMapping("/group/{groupId}/approval-config")
+    public ResponseEntity<ApiResponse<List<ShareApprovalStepConfig>>> approvalConfig(@PathVariable Long groupId) {
+        return ResponseEntity
+                .ok(ApiResponse.success("Jamii approval workflow retrieved.", service.approvalConfig(groupId)));
+    }
+
+    @PutMapping("/group/{groupId}/approval-config")
+    public ResponseEntity<ApiResponse<List<ShareApprovalStepConfig>>> configureApproval(@PathVariable Long groupId,
+            @RequestBody List<ShareApprovalStepConfig> steps) {
+        return ResponseEntity
+                .ok(ApiResponse.success("Jamii approval workflow saved.", service.configureApproval(groupId, steps)));
     }
 
     @GetMapping("/group/{groupId}/requests")
@@ -65,5 +79,11 @@ public class SocialFundController {
     public ResponseEntity<ApiResponse<SocialFundRequestResponse>> pay(@PathVariable Long groupId,
             @PathVariable Long requestId) {
         return ResponseEntity.ok(ApiResponse.success("Jamii request paid.", service.pay(groupId, requestId)));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidation(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(
+                ApiResponse.error("Unable to update Jamii settings. Please check your selections and try again."));
     }
 }
