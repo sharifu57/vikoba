@@ -89,6 +89,16 @@ public class AuthService {
 
                 }
 
+                LocalDateTime now = LocalDateTime.now();
+                Optional<OTP> pending = otpRepository
+                                .findTopByPhoneAndPurposeAndIsUsedFalseAndIsExpiredFalseOrderByIdDesc(user.getPhone(), "login");
+                if (pending.isPresent() && pending.get().getExpiresAt() != null
+                                && pending.get().getExpiresAt().isAfter(now)
+                                && otpCooldownRemaining(pending.get(), now) > 0) {
+                        return new AuthResponse<>(true,
+                                        "A verification code was already sent. Please enter that code.",
+                                        new AuthLookUpResponse(null));
+                }
                 createLoginOtp(user);
 
                 return new AuthResponse<>(
@@ -540,10 +550,9 @@ public class AuthService {
         private void createOtp(User user, String purpose) {
                 LocalDateTime now = LocalDateTime.now();
                 otpRepository.findTopByPhoneOrderByIdDesc(user.getPhone()).ifPresent(previous -> {
-                        if (previous.getCreatedAt() != null && previous.getCreatedAt().isAfter(now.minusSeconds(60))) {
-                                throw new org.springframework.web.server.ResponseStatusException(
-                                                org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
-                                                "Please wait 60 seconds before requesting another code.");
+                        long remaining = otpCooldownRemaining(previous, now);
+                        if (!Boolean.TRUE.equals(previous.getIsUsed()) && remaining > 0) {
+                                throw new OtpCooldownException(remaining);
                         }
                 });
                 otpRepository.expireUnusedByPhone(user.getPhone());
@@ -566,6 +575,26 @@ public class AuthService {
                 if (!sent) {
                         log.warn("OTP generated but SMS delivery failed for {}", user.getPhone());
                 }
+        }
+
+        public static class OtpCooldownException extends org.springframework.web.server.ResponseStatusException {
+                private final long retryAfterSeconds;
+                public OtpCooldownException(long seconds) {
+                        super(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
+                                        "Please wait " + seconds + " seconds before requesting another code.");
+                        retryAfterSeconds = seconds;
+                }
+                public long getRetryAfterSeconds() { return retryAfterSeconds; }
+        }
+
+        private long otpCooldownRemaining(OTP otp, LocalDateTime now) {
+                // Expiry and issuance use the same application clock. Database-created
+                // timestamps can carry a different timezone after deployment changes.
+                LocalDateTime issuedAt = otp.getExpiresAt() == null ? otp.getCreatedAt()
+                                : otp.getExpiresAt().minusMinutes(OTP_EXPIRATION_MINUTES);
+                if (issuedAt == null) return 0;
+                long milliseconds = java.time.Duration.between(now, issuedAt.plusSeconds(60)).toMillis();
+                return Math.min(60, Math.max(0, (milliseconds + 999) / 1000));
         }
 
         private boolean accountAvailable(User user) {

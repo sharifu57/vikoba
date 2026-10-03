@@ -94,7 +94,7 @@ public class VikobaService {
         shareApprovalWorkflowService.configure(group, null);
 
         // Ensure the creating user is a member of the new group and has an admin role
-        try {
+        {
             Member member = user.getMember();
             if (member == null) {
                 member = memberRepository.save(buildMemberFromUser(user));
@@ -121,10 +121,6 @@ public class VikobaService {
                         .active(true)
                         .build());
             }
-        } catch (Exception ex) {
-            // fail-safe: log and continue - group creation succeeded even if member linking
-            // failed
-            System.err.println("Unable to attach creating user as group member: " + ex.getMessage());
         }
 
         return new VikobaGroupCreateResponse(

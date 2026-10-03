@@ -378,6 +378,8 @@ public class MemberService {
         public MemberResponse updateMembershipStatus(Long groupId, Long groupMemberId,
                         UpdateMembershipStatusRequest request) {
                 authorizationService.requireMemberManagementAccess(groupId);
+                groupRepository.findByIdForUpdate(groupId)
+                                .orElseThrow(() -> new IllegalArgumentException("Group not found."));
                 GroupMember membership = membershipInGroup(groupId, groupMemberId);
                 if (request == null || request.getStatus() == null) {
                         throw new IllegalArgumentException("Membership status is required.");
@@ -386,6 +388,11 @@ public class MemberService {
                         throw new IllegalArgumentException("Choose ACTIVE, SUSPENDED, or EXITED for an existing member.");
                 }
 
+                if (request.getStatus() != MembershipStatus.ACTIVE
+                                && memberRoleRepository.findByGroupMemberIdAndActiveTrue(groupMemberId).stream()
+                                        .anyMatch(role -> vikoba.service.systemadmin.SystemAdminService.isChair(role.getRole()))) {
+                        throw new IllegalArgumentException("Ask the system administrator to appoint a replacement chair before changing this membership status.");
+                }
                 membership.setStatus(request.getStatus());
                 membership.setExitDate(request.getStatus() == MembershipStatus.EXITED ? LocalDate.now() : null);
                 groupMemberRepository.save(membership);
@@ -471,7 +478,19 @@ public class MemberService {
         }
 
         private List<MemberRole> assignRoles(GroupMember membership, User user, Set<GroupRole> requested, LocalDate startDate) {
+                groupRepository.findByIdForUpdate(membership.getGroup().getId())
+                                .orElseThrow(() -> new IllegalArgumentException("Group not found."));
                 List<MemberRole> current = memberRoleRepository.findByGroupMemberIdAndActiveTrue(membership.getId());
+                Set<GroupRole> currentChairs = current.stream().map(MemberRole::getRole)
+                                .filter(vikoba.service.systemadmin.SystemAdminService::isChair)
+                                .collect(java.util.stream.Collectors.toSet());
+                Set<GroupRole> requestedChairs = requested.stream()
+                                .filter(vikoba.service.systemadmin.SystemAdminService::isChair)
+                                .collect(java.util.stream.Collectors.toSet());
+                if (!currentChairs.equals(requestedChairs)) {
+                        throw new org.springframework.security.access.AccessDeniedException(
+                                        "Only the system administrator can change a chairperson through System 360.");
+                }
                 current.stream().filter(existing -> !requested.contains(existing.getRole())).forEach(existing -> {
                         existing.setActive(false); existing.setEndDate(startDate); memberRoleRepository.save(existing);
                 });

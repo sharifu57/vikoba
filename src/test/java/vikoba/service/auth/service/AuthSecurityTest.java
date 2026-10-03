@@ -99,10 +99,41 @@ class AuthSecurityTest {
         verifyNoInteractions(sms);
     }
 
+    @Test void repeatedLookupContinuesWithExistingCodeWithoutSendingSms() {
+        stubOtp(code());
+        var login = new vikoba.service.auth.dto.LoginRequest();
+        login.setPhone(user.getPhone());
+        assertTrue(service.lookUp(login).isStatus());
+        verify(otps, never()).save(any());
+        verify(otps, never()).expireUnusedByPhone(anyString());
+        verifyNoInteractions(sms, jwt);
+    }
+
+    @Test void consumedCodeDoesNotBlockNewLogin() {
+        when(users.findByPhoneForUpdate(user.getPhone())).thenReturn(Optional.of(user));
+        OTP previous = code(); previous.setIsUsed(true);
+        when(otps.findTopByPhoneOrderByIdDesc(user.getPhone())).thenReturn(Optional.of(previous));
+        var login = new vikoba.service.auth.dto.LoginRequest(); login.setPhone(user.getPhone());
+        assertTrue(service.lookUp(login).isStatus());
+        verify(otps).save(any());
+        verify(sms).send(eq(user.getPhone()), anyString());
+    }
+
+    @Test void databaseCreationTimestampCannotExtendSmsCooldown() {
+        when(users.findByPhoneForUpdate(user.getPhone())).thenReturn(Optional.of(user));
+        OTP previous = code();
+        previous.setCreatedAt(LocalDateTime.now().plusHours(3));
+        previous.setExpiresAt(LocalDateTime.now().plusMinutes(3));
+        when(otps.findTopByPhoneOrderByIdDesc(user.getPhone())).thenReturn(Optional.of(previous));
+        assertTrue(service.resendOtp(resend).isStatus());
+        verify(sms).send(eq(user.getPhone()), anyString());
+    }
+
     @Test void resendingInvalidatesOldCodesAcrossPurposes() {
         when(users.findByPhoneForUpdate(user.getPhone())).thenReturn(Optional.of(user));
         OTP old = code();
         old.setCreatedAt(LocalDateTime.now().minusMinutes(2));
+        old.setExpiresAt(LocalDateTime.now().plusMinutes(3));
         when(otps.findTopByPhoneOrderByIdDesc(user.getPhone())).thenReturn(Optional.of(old));
         assertTrue(service.resendOtp(resend).isStatus());
         var ordered = inOrder(otps, sms);

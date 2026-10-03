@@ -21,6 +21,13 @@ import vikoba.service.common.response.AuthResponse;
 @RequiredArgsConstructor
 @RequestMapping("/api/auth")
 public class AuthController {
+    public record RetryInfo(long retryAfterSeconds) {}
+    @org.springframework.web.bind.annotation.ExceptionHandler(AuthService.OtpCooldownException.class)
+    public ResponseEntity<AuthResponse<RetryInfo>> cooldown(AuthService.OtpCooldownException error) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", Long.toString(error.getRetryAfterSeconds()))
+                .body(new AuthResponse<>(false, error.getReason(), new RetryInfo(error.getRetryAfterSeconds())));
+    }
     private final AuthService authService;
 
     public record RefreshRequest(String refreshToken) {}

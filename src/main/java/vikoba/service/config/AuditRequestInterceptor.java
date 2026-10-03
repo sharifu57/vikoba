@@ -21,6 +21,9 @@ public class AuditRequestInterceptor implements HandlerInterceptor {
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler,
             Exception exception) {
         String path = request.getRequestURI();
+        // System directory reads must not fill the audit trail while an admin browses it.
+        if (path.startsWith("/api/system-admin/") && "GET".equalsIgnoreCase(request.getMethod()))
+            return;
         if (path.startsWith("/api/audit-logs") || !path.startsWith("/api/") || response.getStatus() >= 500)
             return;
         Long groupId = groupId(request, path);

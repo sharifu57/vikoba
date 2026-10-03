@@ -1,5 +1,8 @@
 # Production Upload Proxy
 
+For the web system-administrator workspace and first-account provisioning, see
+[System 360 setup](system-admin.md).
+
 The share-payment proof endpoint accepts multipart requests up to 20 MB. Spring Boot is configured with:
 
 - `spring.servlet.multipart.max-file-size=20MB`

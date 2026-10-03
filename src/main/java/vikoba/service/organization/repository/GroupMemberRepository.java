@@ -12,6 +12,16 @@ import java.util.List;
 import java.util.Optional;
 
 public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> {
+    @Query("""
+        select gm from GroupMember gm join fetch gm.member m join fetch gm.group g join fetch g.organization
+        where (:groupId is null or g.id = :groupId)
+          and (lower(concat(m.firstName, ' ', m.lastName)) like :search
+            or lower(coalesce(m.phone, '')) like :search or lower(g.name) like :search
+            or lower(gm.membershipNumber) like :search)
+        """)
+    org.springframework.data.domain.Page<GroupMember> searchSystemMembers(
+        @Param("groupId") Long groupId, @Param("search") String search,
+        org.springframework.data.domain.Pageable pageable);
     @Query("select count(gm) from GroupMember gm where gm.status = vikoba.service.common.enums.MembershipStatus.ACTIVE")
     long countActiveMembers();
 

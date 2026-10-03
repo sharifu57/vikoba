@@ -7,6 +7,7 @@ import vikoba.service.common.enums.GroupRole;
 import java.util.List;
 
 public interface MemberRoleRepository extends JpaRepository<MemberRole, Long> {
+    List<MemberRole> findByGroupMemberGroupIdAndActiveTrue(Long groupId);
     List<MemberRole> findByGroupMemberIdAndActiveTrue(Long groupMemberId);
 
     boolean existsByGroupMemberMemberIdAndGroupMemberGroupOrganizationIdAndGroupMemberStatusAndRoleAndActiveTrue(
