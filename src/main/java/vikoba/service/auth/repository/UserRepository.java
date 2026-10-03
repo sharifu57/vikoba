@@ -2,6 +2,8 @@ package vikoba.service.auth.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 import vikoba.service.auth.entity.User;
 
@@ -9,6 +11,11 @@ import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByPhone(String phone);
+
+    // Serialize OTP issuing and verification across all application instances.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u WHERE u.phone = :phone")
+    Optional<User> findByPhoneForUpdate(@Param("phone") String phone);
 
     Optional<User> findByEmail(String email);
 

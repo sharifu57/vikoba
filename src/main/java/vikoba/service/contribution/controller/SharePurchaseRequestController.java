@@ -72,8 +72,13 @@ public class SharePurchaseRequestController {
     public ResponseEntity<byte[]> proof(@PathVariable Long groupId, @PathVariable Long requestId) {
         byte[] proof = service.proof(groupId, requestId);
         String contentType = service.proofContentType(groupId, requestId);
-        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-                .contentType(MediaType.parseMediaType(contentType == null ? "application/octet-stream" : contentType))
+        boolean safeType = contentType != null && java.util.Set.of(
+                "image/png", "image/jpeg", "image/webp", "application/pdf").contains(contentType);
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, safeType ? "inline" : "attachment")
+                .header("Content-Security-Policy", "sandbox; default-src 'none'")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header("X-Content-Type-Options", "nosniff")
+                .contentType(MediaType.parseMediaType(safeType ? contentType : "application/octet-stream"))
                 .body(proof);
     }
 

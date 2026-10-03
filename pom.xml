@@ -28,7 +28,22 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+		<!-- Security patches newer than the Spring Boot 4.1.0 dependency BOM. -->
+		<jackson-bom.version>3.1.7</jackson-bom.version>
+		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
+		<tomcat.version>11.0.25</tomcat.version>
+		<postgresql.version>42.7.12</postgresql.version>
+		<log4j2.version>2.25.5</log4j2.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>at.yawk.lz4</groupId>
+				<artifactId>lz4-java</artifactId>
+				<version>1.11.1</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -1,6 +1,7 @@
 package vikoba.service.fine.service;
 
 import lombok.RequiredArgsConstructor;
+import vikoba.service.organization.service.GroupAuthorizationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vikoba.service.common.enums.FineStatus;
@@ -20,6 +21,7 @@ import vikoba.service.notification.SmsNotificationService;
 @Service
 @RequiredArgsConstructor
 public class FineService {
+    private final GroupAuthorizationService authorizationService;
     private final FineRepository fines;
     private final FineTypeRepository types;
     private final GroupMemberRepository members;
@@ -28,12 +30,14 @@ public class FineService {
 
     @Transactional(readOnly = true)
     public List<FineResponse> list(Long groupId) {
+        authorizationService.requireMembership(groupId);
         requireGroup(groupId);
         return fines.findByGroupId(groupId).stream().map(this::toResponse).toList();
     }
 
     @Transactional
     public FineResponse create(Long groupId, FineInput input) {
+        authorizationService.requirePermission(groupId, "FINE_MANAGE");
         VikobaGroup group = requireGroup(groupId);
         GroupMember member = members.findById(input.getGroupMemberId())
                 .orElseThrow(() -> new IllegalArgumentException("Group member not found."));
@@ -55,6 +59,7 @@ public class FineService {
 
     @Transactional
     public FineResponse update(Long groupId, Long id, FineInput input) {
+        authorizationService.requirePermission(groupId, "FINE_MANAGE");
         Fine fine = fines.findById(id).orElseThrow(() -> new IllegalArgumentException("Fine not found."));
         if (!fine.getGroupMember().getGroup().getId().equals(groupId))
             throw new IllegalArgumentException("Fine does not belong to this group.");
@@ -85,6 +90,7 @@ public class FineService {
 
     @Transactional(readOnly = true)
     public List<FineTypeResponse> types(Long groupId) {
+        authorizationService.requireMembership(groupId);
         requireGroup(groupId);
         return types.findByGroupIdOrderByNameAsc(groupId).stream().filter(FineType::isActive).map(this::typeResponse)
                 .toList();
@@ -92,6 +98,7 @@ public class FineService {
 
     @Transactional
     public FineTypeResponse createType(Long groupId, FineTypeRequest request) {
+        authorizationService.requirePermission(groupId, "FINE_MANAGE");
         VikobaGroup group = requireGroup(groupId);
         String code = normalizeCode(request.getCode(), request.getName(), "FINE");
         String name = requiredText(request.getName(), "Fine type name");
@@ -119,6 +126,7 @@ public class FineService {
 
     @Transactional
     public FineTypeResponse updateType(Long groupId, Long id, FineTypeRequest request) {
+        authorizationService.requirePermission(groupId, "FINE_MANAGE");
         FineType type = types.findById(id).orElseThrow(() -> new IllegalArgumentException("Fine type not found."));
         if (!type.getGroup().getId().equals(groupId)) {
             throw new IllegalArgumentException("Fine type does not belong to this group.");
@@ -147,6 +155,7 @@ public class FineService {
 
     @Transactional
     public void deleteType(Long groupId, Long id) {
+        authorizationService.requirePermission(groupId, "FINE_MANAGE");
         FineType type = types.findById(id).orElseThrow(() -> new IllegalArgumentException("Fine type not found."));
         if (!type.getGroup().getId().equals(groupId)) {
             throw new IllegalArgumentException("Fine type does not belong to this group.");

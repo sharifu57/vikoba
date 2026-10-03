@@ -42,7 +42,8 @@ class SharePurchaseSplitTest {
         when(groupSettingsRepository.findByGroupId(7L)).thenReturn(Optional.of(settings));
         when(shareProductRepository.findByGroupIdAndCode(7L, "STANDARD")).thenReturn(Optional.of(new ShareProduct()));
         when(requestRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        var proof = new MockMultipartFile("proofFile", "receipt.png", "image/png", new byte[]{1, 2, 3});
+        var proof = new MockMultipartFile("proofFile", "receipt.png", "image/png",
+                new byte[]{(byte) 137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0});
         var result = service.submit(7L, new BigDecimal("10000"), null, "Mobile Money", "REF", null, proof);
         assertEquals(0, new BigDecimal("8000").compareTo(result.getAmount()));
         assertEquals(0, new BigDecimal("2000").compareTo(result.getJamiiAmount()));

@@ -1,6 +1,7 @@
 package vikoba.service.dividend.service;
 
 import lombok.RequiredArgsConstructor;
+import vikoba.service.organization.service.GroupAuthorizationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vikoba.service.dividend.dto.*;
@@ -21,6 +22,7 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class DividendService {
+    private final GroupAuthorizationService authorizationService;
     private final DividendRepository dividends;
     private final VikobaGroupRepository groups;
     private final GroupMemberRepository members;
@@ -31,11 +33,13 @@ public class DividendService {
 
     @Transactional(readOnly = true)
     public List<DividendResponse> list(Long groupId, Integer year) {
+        authorizationService.requireMembership(groupId);
         return dividends.findByGroupIdAndFinancialYearOrderByAmountDesc(groupId, year).stream().map(this::map).toList();
     }
 
     @Transactional
     public List<DividendResponse> generate(Long groupId, DividendInput input) {
+        authorizationService.requirePermission(groupId, "DIVIDEND_MANAGE");
         BigDecimal profitPool = payments.findByGroupIdWithMember(groupId).stream()
                 .filter(p -> p.getStatus() == vikoba.service.common.enums.PaymentStatus.COMPLETED)
                 .map(Payment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add)

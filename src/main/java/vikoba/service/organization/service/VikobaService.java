@@ -2,6 +2,7 @@
 package vikoba.service.organization.service;
 
 import lombok.RequiredArgsConstructor;
+import vikoba.service.organization.service.GroupAuthorizationService;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -40,6 +41,7 @@ import vikoba.service.common.enums.MembershipType;
 @Service
 @RequiredArgsConstructor
 public class VikobaService {
+    private final GroupAuthorizationService authorizationService;
     private final UserRepository userRepository;
     private final OrganizationRepository organizationRepository;
     private final VikobaGroupRepository groupRepository;
@@ -443,6 +445,7 @@ public class VikobaService {
 
     @Transactional(readOnly = true)
     public GroupWithSettingsResponse getGroupWithSettings(Long groupId) {
+        authorizationService.requireMembership(groupId);
 
         if (groupId == null) {
             throw new IllegalArgumentException("groupId is required.");

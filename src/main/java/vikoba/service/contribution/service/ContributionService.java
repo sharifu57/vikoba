@@ -1,6 +1,7 @@
 package vikoba.service.contribution.service;
 
 import lombok.RequiredArgsConstructor;
+import vikoba.service.organization.service.GroupAuthorizationService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -34,6 +35,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class ContributionService {
+    private final GroupAuthorizationService authorizationService;
 
     private final MemberContributionRepository memberContributionRepository;
     private final ContributionPeriodRepository contributionPeriodRepository;
@@ -50,10 +52,14 @@ public class ContributionService {
         // Validate member exists
         GroupMember groupMember = groupMemberRepository.findById(request.getGroupMemberId())
                 .orElseThrow(() -> new IllegalArgumentException("Member not found"));
+        authorizationService.requirePermission(groupMember.getGroup().getId(), "CONTRIBUTION_MANAGE");
 
         // Validate contribution period exists
         ContributionPeriod period = contributionPeriodRepository.findById(request.getContributionPeriodId())
                 .orElseThrow(() -> new IllegalArgumentException("Contribution period not found"));
+        if (!period.getContributionType().getGroup().getId().equals(groupMember.getGroup().getId())) {
+            throw new IllegalArgumentException("Contribution period does not belong to this group");
+        }
 
         // Validate amount
         if (request.getPaidAmount() == null || request.getPaidAmount().compareTo(BigDecimal.ZERO) <= 0) {
@@ -110,10 +116,14 @@ public class ContributionService {
      */
     @Transactional
     public BulkContributionResult processBulkContributionUpload(Long groupId, MultipartFile file) {
+        authorizationService.requirePermission(groupId, "CONTRIBUTION_MANAGE");
         log.info("Processing bulk contribution upload for group: {}", groupId);
 
-        if (file.isEmpty()) {
+        if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("File is empty");
+        }
+        if (file.getSize() > 10L * 1024 * 1024) {
+            throw new IllegalArgumentException("Contribution spreadsheet must be 10 MB or smaller");
         }
 
         List<BulkContributionRow> rows = new ArrayList<>();
@@ -122,6 +132,9 @@ public class ContributionService {
 
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
+            if (sheet.getLastRowNum() > 10000) {
+                throw new IllegalArgumentException("Contribution spreadsheet must have at most 10000 rows");
+            }
 
             for (int i = 1; i <= sheet.getLastRowNum(); i++) { // Start from row 1 (skip header)
                 Row row = sheet.getRow(i);
@@ -269,6 +282,7 @@ public class ContributionService {
      */
     @Transactional(readOnly = true)
     public List<ContributionPeriodResponse> getActiveContributionPeriods(Long groupId) {
+        authorizationService.requireMembership(groupId);
 
         if (groupId == null) {
             throw new IllegalArgumentException("groupId is required.");
@@ -315,6 +329,7 @@ public class ContributionService {
     public List<ContributionDetailResponse> getMemberContributionDetails(Long groupMemberId) {
         GroupMember member = groupMemberRepository.findById(groupMemberId)
                 .orElseThrow(() -> new IllegalArgumentException("Member not found"));
+        authorizationService.requireSelfOrPermission(member.getGroup().getId(), groupMemberId, "REPORT_VIEW");
 
         List<MemberContribution> contributions = memberContributionRepository.findByGroupMemberId(groupMemberId);
 
@@ -328,6 +343,7 @@ public class ContributionService {
      */
     @Transactional(readOnly = true)
     public List<ContributionDetailResponse> getGroupContributionDetails(Long groupId, String status, Long periodId) {
+        authorizationService.requireMembership(groupId);
         List<MemberContribution> contributions = memberContributionRepository.findByGroupId(groupId);
 
         return contributions.stream()
@@ -344,6 +360,10 @@ public class ContributionService {
     public MemberContributionResponse updateContribution(Long contributionId, RecordContributionRequest request) {
         MemberContribution contribution = memberContributionRepository.findById(contributionId)
                 .orElseThrow(() -> new IllegalArgumentException("Contribution not found"));
+        authorizationService.requirePermission(contribution.getGroupMember().getGroup().getId(), "CONTRIBUTION_MANAGE");
+        if (request.getPaidAmount() == null || request.getPaidAmount().signum() < 0) {
+            throw new IllegalArgumentException("Paid amount cannot be negative");
+        }
 
         contribution.setPaidAmount(request.getPaidAmount());
         contribution.setBalance(contribution.getExpectedAmount().subtract(request.getPaidAmount()));
@@ -420,6 +440,7 @@ public class ContributionService {
      * Get contribution summary for a group
      */
     public ContributionSummaryResponse getContributionSummary(Long groupId) {
+        authorizationService.requireMembership(groupId);
         List<MemberContribution> contributions = memberContributionRepository.findByGroupId(groupId);
 
         BigDecimal totalExpected = contributions.stream()

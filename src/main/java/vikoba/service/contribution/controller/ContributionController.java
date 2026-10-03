@@ -37,8 +37,10 @@ public class ContributionController {
                     ApiResponse.success("Contribution recorded successfully.", response));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -66,8 +68,10 @@ public class ContributionController {
                     ApiResponse.success("Bulk contribution upload processed.", result));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -87,8 +91,10 @@ public class ContributionController {
                     ApiResponse.success("Contribution periods retrieved successfully.", periods));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -109,8 +115,10 @@ public class ContributionController {
                     ApiResponse.success("Member contributions retrieved successfully.", contributions));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -134,8 +142,10 @@ public class ContributionController {
                     ApiResponse.success("Group contributions retrieved successfully.", contributions));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -156,8 +166,10 @@ public class ContributionController {
                     ApiResponse.success("Contribution updated successfully.", response));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -195,8 +207,10 @@ public class ContributionController {
                     ApiResponse.success("Contribution summary retrieved successfully.", summary));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 }

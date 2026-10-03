@@ -41,8 +41,10 @@ public class OrganizationController {
             return ResponseEntity.ok(ApiResponse.success("Group created successfully.", response));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -54,8 +56,10 @@ public class OrganizationController {
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -79,8 +83,10 @@ public class OrganizationController {
             return ResponseEntity.ok(ApiResponse.success("Group details retrieved.", resp));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -91,8 +97,10 @@ public class OrganizationController {
             return ResponseEntity.ok(ApiResponse.success("Groups retrieved.", resp));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(403).body(ApiResponse.error("Access to this group is denied."));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 }

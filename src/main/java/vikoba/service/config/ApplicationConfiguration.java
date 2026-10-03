@@ -14,6 +14,8 @@ import vikoba.service.auth.repository.UserRoleRepository;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.util.List;
+import java.time.LocalDateTime;
+import vikoba.service.common.enums.UserStatus;
 
 @Configuration
 public class ApplicationConfiguration {
@@ -30,7 +32,10 @@ public class ApplicationConfiguration {
     public UserDetailsService userDetailsService() {
         return phone -> userRepository.findByPhone(phone)
                 .map(user -> new org.springframework.security.core.userdetails.User(
-                        user.getPhone(), "", userRoleRepository.findByUserPhoneWithPermissions(phone).stream()
+                        user.getPhone(), user.getPasswordHash(),
+                        user.getStatus() == UserStatus.ACTIVE, true, true,
+                        user.getLockedUntil() == null || !user.getLockedUntil().isAfter(LocalDateTime.now()),
+                        userRoleRepository.findByUserPhoneWithPermissions(phone).stream()
                                 .flatMap(ur -> java.util.stream.Stream.concat(
                                         java.util.stream.Stream.of(new SimpleGrantedAuthority("ROLE_" + ur.getRole().getName())),
                                         ur.getRole().getPermissions().stream().map(p -> new SimpleGrantedAuthority(p.getName()))))

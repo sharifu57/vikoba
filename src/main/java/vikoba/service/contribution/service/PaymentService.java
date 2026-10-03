@@ -1,6 +1,7 @@
 package vikoba.service.contribution.service;
 
 import lombok.RequiredArgsConstructor;
+import vikoba.service.organization.service.GroupAuthorizationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vikoba.service.common.enums.PaymentAllocationType;
@@ -23,6 +24,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PaymentService {
+    private final GroupAuthorizationService authorizationService;
     private final PaymentRepository paymentRepository;
     private final PaymentAllocationRepository allocationRepository;
     private final GroupMemberRepository groupMemberRepository;
@@ -30,6 +32,7 @@ public class PaymentService {
 
     @Transactional
     public PaymentResponse record(Long groupId, RecordPaymentRequest request) {
+        authorizationService.requireMembership(groupId);
         if (request.getAmount() == null || request.getAmount().signum() <= 0) {
             throw new IllegalArgumentException("Payment amount must be greater than zero");
         }
@@ -68,6 +71,7 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public java.util.List<PaymentResponse> list(Long groupId) {
+        authorizationService.requireMembership(groupId);
         return paymentRepository.findByGroupIdWithMember(groupId).stream()
                 .map(payment -> toResponse(
                         payment,

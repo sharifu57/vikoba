@@ -58,7 +58,7 @@ public class AuthService {
                 }
                 String phone = jwtService.extractUsername(refreshToken);
                 Optional<User> user = userRepository.findByPhone(phone);
-                if (user.isEmpty() || user.get().getStatus() == UserStatus.DISABLED) {
+                if (user.isEmpty() || !accountAvailable(user.get())) {
                         return new AuthResponse<>(false, "Account is unavailable.", null);
                 }
                 AuthResponse<Void> response = new AuthResponse<>(true, "Session refreshed.", null);
@@ -67,8 +67,9 @@ public class AuthService {
                 return response;
         }
 
+        @Transactional
         public AuthResponse<AuthLookUpResponse> lookUp(LoginRequest request) {
-                Optional<User> optionalUser = userRepository.findByPhone(request.getPhone());
+                Optional<User> optionalUser = userRepository.findByPhoneForUpdate(request.getPhone());
 
                 if (optionalUser.isEmpty()) {
 
@@ -80,7 +81,7 @@ public class AuthService {
 
                 User user = optionalUser.get();
 
-                if (user.getStatus().equals(UserStatus.DISABLED)) {
+                if (!accountAvailable(user)) {
                         return new AuthResponse<>(
                                         false,
                                         "Your account has been disabled.",
@@ -198,21 +199,19 @@ public class AuthService {
         @Transactional
         public AuthResponse<Void> resendOtp(ResendOtpRequest request) {
                 String phone = request.getPhone();
-                String purpose = request.getPurpose() == null || request.getPurpose().isBlank()
-                                ? "login"
-                                : request.getPurpose();
+                String purpose = otpPurpose(request.getPurpose());
 
                 if (phone == null || phone.isBlank()) {
                         return new AuthResponse<>(false, "Phone number is required.", null);
                 }
 
-                Optional<User> optionalUser = userRepository.findByPhone(phone);
+                Optional<User> optionalUser = userRepository.findByPhoneForUpdate(phone);
                 if (optionalUser.isEmpty()) {
                         return new AuthResponse<>(false, "No user found for this phone number.", null);
                 }
 
                 User user = optionalUser.get();
-                if (user.getStatus() != null && user.getStatus().equals(UserStatus.DISABLED)) {
+                if (!accountAvailable(user)) {
                         return new AuthResponse<>(false, "Your account has been disabled.", null);
                 }
 
@@ -228,10 +227,15 @@ public class AuthService {
                 // 1. DETERMINE OTP PURPOSE
                 // ============================================================
 
-                String purpose = request.getPurpose() == null
-                                || request.getPurpose().isBlank()
-                                                ? "login"
-                                                : request.getPurpose().trim();
+                String purpose = otpPurpose(request.getPurpose());
+                User user = userRepository.findByPhoneForUpdate(request.getPhone()).orElse(null);
+                if (user == null || !accountAvailable(user)) {
+                        return new AuthResponse<>(false, "Account is unavailable.", null);
+                }
+                if (user.getLockedUntil() != null && !user.getLockedUntil().isAfter(LocalDateTime.now())) {
+                        user.setLockedUntil(null);
+                        user.setFailedLoginAttempts(0);
+                }
 
                 // ============================================================
                 // 2. FIND LATEST VALID OTP
@@ -289,7 +293,14 @@ public class AuthService {
                 // 5. VERIFY CODE
                 // ============================================================
 
-                if (!otp.getCode().equals(request.getCode())) {
+                if (request.getCode() == null || !request.getCode().matches("[0-9]{6}")
+                                || !passwordEncoder.matches(request.getCode(), otp.getCode())) {
+                        int failures = (user.getFailedLoginAttempts() == null ? 0 : user.getFailedLoginAttempts()) + 1;
+                        user.setFailedLoginAttempts(failures);
+                        if (failures >= 5) {
+                                user.setLockedUntil(now.plusMinutes(15));
+                        }
+                        userRepository.save(user);
 
                         otp.setAttempts(
                                         otp.getAttempts() + 1);
@@ -307,43 +318,6 @@ public class AuthService {
                 }
 
                 // ============================================================
-                // 6. FIND USER
-                // ============================================================
-
-                // User user =
-                // userRepository
-                // .findByPhone(request.getPhone())
-                // .orElse(null);
-
-                User user = userRepository
-                                .findByPhoneWithMember(request.getPhone())
-                                .orElse(null);
-
-                if (user == null) {
-
-                        return new AuthResponse<>(
-                                        false,
-                                        "User account not found.",
-                                        null);
-                }
-
-                // ============================================================
-                // 7. CHECK USER STATUS
-                // ============================================================
-
-                boolean phoneVerification = "phone_verification".equalsIgnoreCase(
-                                purpose);
-
-                if (!phoneVerification
-                                && !UserStatus.ACTIVE.equals(user.getStatus())) {
-
-                        return new AuthResponse<>(
-                                        false,
-                                        "Your account has been disabled.",
-                                        null);
-                }
-
-                // ============================================================
                 // 8. MARK OTP USED
                 // ============================================================
 
@@ -355,11 +329,9 @@ public class AuthService {
                 // 9. ACTIVATE USER
                 // ============================================================
 
-                if (phoneVerification) {
-                        user.setStatus(UserStatus.ACTIVE);
-                }
-
                 user.setLastLoginAt(now);
+                user.setFailedLoginAttempts(0);
+                user.setLockedUntil(null);
 
                 userRepository.save(user);
 
@@ -566,10 +538,20 @@ public class AuthService {
         }
 
         private void createOtp(User user, String purpose) {
+                LocalDateTime now = LocalDateTime.now();
+                otpRepository.findTopByPhoneOrderByIdDesc(user.getPhone()).ifPresent(previous -> {
+                        if (previous.getCreatedAt() != null && previous.getCreatedAt().isAfter(now.minusSeconds(60))) {
+                                throw new org.springframework.web.server.ResponseStatusException(
+                                                org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
+                                                "Please wait 60 seconds before requesting another code.");
+                        }
+                });
+                otpRepository.expireUnusedByPhone(user.getPhone());
                 OTP otp = new OTP();
                 otp.setPhone(user.getPhone());
                 otp.setUser(user);
-                otp.setCode(String.format("%06d", RANDOM.nextInt(1_000_000)));
+                String code = String.format("%06d", RANDOM.nextInt(1_000_000));
+                otp.setCode(passwordEncoder.encode(code));
                 otp.setPurpose(purpose);
                 otp.setAttempts(0);
                 otp.setMaxAttempts(5);
@@ -579,10 +561,25 @@ public class AuthService {
                 otpRepository.save(otp);
                 boolean sent = smsNotificationService.send(
                                 user.getPhone(),
-                                "VIKOBA360 verification code: " + otp.getCode()
+                                "VIKOBA360 verification code: " + code
                                                 + "\nNamba ya uthibitisho. Inaisha baada ya dakika 5. Usimpe mtu yeyote.");
                 if (!sent) {
                         log.warn("OTP generated but SMS delivery failed for {}", user.getPhone());
                 }
+        }
+
+        private boolean accountAvailable(User user) {
+                return user.getStatus() == UserStatus.ACTIVE
+                                && (user.getLockedUntil() == null
+                                                || !user.getLockedUntil().isAfter(LocalDateTime.now()));
+        }
+
+        private String otpPurpose(String purpose) {
+                String normalized = purpose == null || purpose.isBlank() ? "login" : purpose.trim();
+                if (!List.of("login", "phone_verification").contains(normalized)) {
+                        throw new org.springframework.web.server.ResponseStatusException(
+                                        org.springframework.http.HttpStatus.BAD_REQUEST, "Unsupported OTP purpose.");
+                }
+                return normalized;
         }
 }

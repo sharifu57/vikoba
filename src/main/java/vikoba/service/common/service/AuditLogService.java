@@ -1,6 +1,7 @@
 package vikoba.service.common.service;
 
 import lombok.RequiredArgsConstructor;
+import vikoba.service.organization.service.GroupAuthorizationService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -18,6 +19,7 @@ import vikoba.service.organization.repository.VikobaGroupRepository;
 @Service
 @RequiredArgsConstructor
 public class AuditLogService {
+    private final GroupAuthorizationService authorizationService;
     private final AuditLogRepository repository;
     private final UserRepository userRepository;
     private final VikobaGroupRepository groupRepository;
@@ -35,6 +37,7 @@ public class AuditLogService {
 
     @Transactional(readOnly = true)
     public Page<AuditLogResponse> list(Long groupId, int page, int size) {
+        authorizationService.requirePermission(groupId, "AUDIT_VIEW");
         if (groupId == null || !groupRepository.existsById(groupId)) {
             throw new IllegalArgumentException("Group not found.");
         }

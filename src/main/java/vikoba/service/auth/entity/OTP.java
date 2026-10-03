@@ -15,7 +15,7 @@ public class OTP extends BaseEntity {
     @Column(nullable = false, length = 20)
     private String phone;
 
-    @Column(nullable = false, length = 10)
+    @Column(nullable = false, length = 100)
     private String code;
 
     @Column(nullable = false, length = 30)

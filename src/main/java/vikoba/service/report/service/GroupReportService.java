@@ -1,6 +1,7 @@
 package vikoba.service.report.service;
 
 import lombok.RequiredArgsConstructor;
+import vikoba.service.organization.service.GroupAuthorizationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vikoba.service.common.enums.FineStatus;
@@ -37,6 +38,7 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class GroupReportService {
+    private final GroupAuthorizationService authorizationService;
     private final VikobaGroupRepository groupRepository;
     private final GroupMemberRepository memberRepository;
     private final ContributionService contributionService;
@@ -49,6 +51,7 @@ public class GroupReportService {
 
     @Transactional(readOnly = true)
     public GroupReportResponse generate(Long groupId, LocalDate start, LocalDate end) {
+        authorizationService.requirePermission(groupId, "REPORT_VIEW");
         if (groupId == null)
             throw new IllegalArgumentException("groupId is required.");
         VikobaGroup group = groupRepository.findById(groupId)

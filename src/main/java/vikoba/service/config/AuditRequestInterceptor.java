@@ -63,7 +63,8 @@ public class AuditRequestInterceptor implements HandlerInterceptor {
     }
 
     private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        return forwarded == null || forwarded.isBlank() ? request.getRemoteAddr() : forwarded.split(",")[0].trim();
+        // A trusted proxy integration may resolve this address at the container
+        // layer. Never trust a client-supplied forwarding header directly.
+        return request.getRemoteAddr();
     }
 }

@@ -294,12 +294,6 @@ public class SharePurchaseRequestService {
     }
 
     private void requireProof(MultipartFile proofFile) {
-        if (proofFile == null || proofFile.isEmpty())
-            throw new IllegalArgumentException("Attach a payment receipt or message screenshot as proof");
-        if (proofFile.getSize() > 5 * 1024 * 1024)
-            throw new IllegalArgumentException("Payment proof must be 5 MB or smaller");
-        String contentType = proofFile.getContentType();
-        if (contentType == null || !(contentType.startsWith("image/") || "application/pdf".equals(contentType)))
-            throw new IllegalArgumentException("Payment proof must be an image or PDF receipt");
+        PaymentProofValidator.validate(proofFile);
     }
 }

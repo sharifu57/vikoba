@@ -35,7 +35,7 @@ public class MeetingController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -49,7 +49,7 @@ public class MeetingController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -81,7 +81,7 @@ public class MeetingController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -96,7 +96,7 @@ public class MeetingController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -110,7 +110,7 @@ public class MeetingController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -124,7 +124,7 @@ public class MeetingController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -138,7 +138,7 @@ public class MeetingController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 
@@ -151,7 +151,7 @@ public class MeetingController {
         } catch (AccessDeniedException ex) {
             return ResponseEntity.status(403).body(ApiResponse.error(ex.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Unable to complete this request."));
         }
     }
 }

@@ -62,7 +62,7 @@ public class SmsNotificationService {
         Notification notification = notificationRepository.save(Notification.builder()
                 .user(user)
                 .title("Vikoba notification")
-                .message(message)
+                .message(isVerificationMessage(message) ? "Verification code requested; code not retained." : message)
                 .type(NotificationType.INFO)
                 .channel("SMS")
                 .deliveryStatus("PENDING")
@@ -77,10 +77,14 @@ public class SmsNotificationService {
                     .whenComplete((result, throwable) -> {
                         if (throwable != null) {
                             notification.setDeliveryStatus("FAILED");
-                            notification.setProviderResponse("Unable to enqueue SMS: " + throwable.getMessage());
+                            notification.setProviderResponse(isVerificationMessage(message)
+                                    ? "Unable to enqueue verification SMS" : "Unable to enqueue SMS: " + throwable.getMessage());
                             notificationRepository.save(notification);
-                            log.warn("Unable to enqueue SMS for {}: {}", customerPhone, throwable.getMessage(),
-                                    throwable);
+                            if (isVerificationMessage(message)) {
+                                log.warn("Unable to enqueue verification SMS notification {}", notification.getId());
+                            } else {
+                                log.warn("Unable to enqueue SMS for {}: {}", customerPhone, throwable.getMessage(), throwable);
+                            }
                         } else {
                             log.info("Queued SMS notification {} for {}", notification.getId(), customerPhone);
                         }
@@ -89,9 +93,14 @@ public class SmsNotificationService {
             return true;
         } catch (Exception e) {
             notification.setDeliveryStatus("FAILED");
-            notification.setProviderResponse("Unable to enqueue SMS: " + e.getMessage());
+            notification.setProviderResponse(isVerificationMessage(message)
+                    ? "Unable to enqueue verification SMS" : "Unable to enqueue SMS: " + e.getMessage());
             notificationRepository.save(notification);
-            log.warn("Unable to enqueue SMS for {}: {}", customerPhone, e.getMessage(), e);
+            if (isVerificationMessage(message)) {
+                log.warn("Unable to enqueue verification SMS notification {}", notification.getId());
+            } else {
+                log.warn("Unable to enqueue SMS for {}: {}", customerPhone, e.getMessage(), e);
+            }
             return false;
         }
     }
@@ -102,7 +111,7 @@ public class SmsNotificationService {
             SmsJob job = objectMapper.readValue(payload, SmsJob.class);
             deliver(job);
         } catch (Exception e) {
-            log.error("Invalid SMS queue message", e);
+            log.error("Invalid SMS queue message ({})", e.getClass().getSimpleName());
         }
     }
 
@@ -112,7 +121,7 @@ public class SmsNotificationService {
             SmsJob job = objectMapper.readValue(payload, SmsJob.class);
             deliver(job);
         } catch (Exception e) {
-            log.error("Invalid SMS retry message", e);
+            log.error("Invalid SMS retry message ({})", e.getClass().getSimpleName());
         }
     }
 
@@ -129,7 +138,7 @@ public class SmsNotificationService {
             log.warn("SMS delivery moved to DLQ after retries for notification {} to {}", job.notificationId(),
                     job.phone());
         } catch (Exception e) {
-            log.error("Invalid SMS DLQ message", e);
+            log.error("Invalid SMS DLQ message ({})", e.getClass().getSimpleName());
         }
     }
 
@@ -138,10 +147,6 @@ public class SmsNotificationService {
         if (notification == null) {
             return;
         }
-
-        log.info("============SENDER ID::" + dbEnv.senderId);
-        log.info("============API KEY:::" + dbEnv.smsApiKey);
-        log.info("============SMS URL:::" + dbEnv.smsUrl);
 
         String senderIdentity = systemSettingService.get("sms.sender.id", dbEnv.senderId);
         if (dbEnv.smsApiKey == null || dbEnv.smsApiKey.isBlank()) {
@@ -175,7 +180,8 @@ public class SmsNotificationService {
 
             if (response.getStatusCode().is2xxSuccessful()) {
                 notification.setDeliveryStatus("SENT");
-                notification.setProviderResponse(String.valueOf(response.getBody()));
+                notification.setProviderResponse(isVerificationMessage(job.message())
+                        ? "Verification SMS accepted by provider." : String.valueOf(response.getBody()));
                 notification.setSentAt(LocalDateTime.now());
                 notificationRepository.save(notification);
                 return;
@@ -194,7 +200,7 @@ public class SmsNotificationService {
         if (job.attempt() < MAX_RETRIES) {
             notification.setDeliveryStatus("RETRYING");
             notification.setProviderResponse(
-                    "Retrying SMS delivery (attempt " + nextAttempt + "/" + MAX_RETRIES + "): " + e.getMessage());
+                    "Retrying SMS delivery (attempt " + nextAttempt + "/" + MAX_RETRIES + "): " + failureReason(job, e));
             notificationRepository.save(notification);
 
             try {
@@ -202,26 +208,37 @@ public class SmsNotificationService {
                         new SmsJob(job.notificationId(), job.phone(), job.message(), nextAttempt)))
                         .whenComplete((result, throwable) -> {
                             if (throwable != null) {
-                                log.warn("Failed to enqueue SMS retry for notification {} to {}", job.notificationId(),
-                                        job.phone(), throwable);
+                                if (isVerificationMessage(job.message())) {
+                                    log.warn("Failed to enqueue verification SMS retry for notification {}", job.notificationId());
+                                } else {
+                                    log.warn("Failed to enqueue SMS retry for notification {} to {}", job.notificationId(),
+                                            job.phone(), throwable);
+                                }
                             }
                         });
             } catch (Exception queueException) {
                 notification.setDeliveryStatus("FAILED");
-                notification.setProviderResponse("Retry queue failed: " + queueException.getMessage());
+                notification.setProviderResponse(isVerificationMessage(job.message())
+                        ? "Verification SMS retry queue failed" : "Retry queue failed: " + queueException.getMessage());
                 notificationRepository.save(notification);
-                log.warn("Retry queue failure for notification {} to {}: {}", job.notificationId(), job.phone(),
-                        queueException.getMessage(), queueException);
+                if (isVerificationMessage(job.message())) {
+                    log.warn("Verification SMS retry queue failure for notification {}", job.notificationId());
+                } else {
+                    log.warn("Retry queue failure for notification {} to {}: {}", job.notificationId(), job.phone(),
+                            queueException.getMessage(), queueException);
+                }
             }
             return;
         }
 
         notification.setDeliveryStatus("FAILED");
-        notification.setProviderResponse("SMS delivery failed after " + MAX_RETRIES + " retries: " + e.getMessage());
+        notification.setProviderResponse("SMS delivery failed after " + MAX_RETRIES + " retries: " + failureReason(job, e));
         notificationRepository.save(notification);
 
         try {
-            kafkaTemplate.send(DLQ_TOPIC, job.notificationId().toString(), objectMapper.writeValueAsString(job))
+            SmsJob failedJob = isVerificationMessage(job.message())
+                    ? new SmsJob(job.notificationId(), job.phone(), "Verification code removed.", job.attempt()) : job;
+            kafkaTemplate.send(DLQ_TOPIC, job.notificationId().toString(), objectMapper.writeValueAsString(failedJob))
                     .whenComplete((result, throwable) -> {
                         if (throwable != null) {
                             log.warn("Failed to send SMS job {} to DLQ", job.notificationId(), throwable);
@@ -232,7 +249,19 @@ public class SmsNotificationService {
                     queueException.getMessage(), queueException);
         }
 
-        log.warn("Failed to send SMS to {} after {} retries: {}", job.phone(), MAX_RETRIES, e.getMessage(), e);
+        if (isVerificationMessage(job.message())) {
+            log.warn("Verification SMS delivery failed for notification {} after {} retries", job.notificationId(), MAX_RETRIES);
+        } else {
+            log.warn("Failed to send SMS to {} after {} retries: {}", job.phone(), MAX_RETRIES, e.getMessage(), e);
+        }
+    }
+
+    private boolean isVerificationMessage(String message) {
+        return message != null && message.startsWith("VIKOBA360 verification code: ");
+    }
+
+    private String failureReason(SmsJob job, Exception exception) {
+        return isVerificationMessage(job.message()) ? "SMS provider request failed" : exception.getMessage();
     }
 
     private record SmsJob(Long notificationId, String phone, String message, int attempt) {

@@ -1,6 +1,7 @@
 package vikoba.service.accounting.service;
 
 import lombok.RequiredArgsConstructor;
+import vikoba.service.organization.service.GroupAuthorizationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class AccountingService {
+    private final GroupAuthorizationService authorizationService;
     private final AccountRepository accountRepository;
     private final FinancialTransactionRepository transactionRepository;
     private final TransactionLineRepository lineRepository;
@@ -33,12 +35,14 @@ public class AccountingService {
 
     @Transactional
     public List<AccountResponse> accounts(Long groupId) {
+        authorizationService.requireMembership(groupId);
         ensureDefaultAccounts(groupId);
         return balances(groupId);
     }
 
     @Transactional
     public AccountResponse createAccount(Long groupId, AccountRequest request) {
+        authorizationService.requireMembership(groupId);
         VikobaGroup group = requireGroup(groupId);
         String code = required(request.getCode(), "account code");
         if (accountRepository.existsByGroupIdAndCode(groupId, code))
@@ -55,6 +59,7 @@ public class AccountingService {
 
     @Transactional
     public List<LedgerLineResponse> ledger(Long groupId) {
+        authorizationService.requireMembership(groupId);
         ensureDefaultAccounts(groupId);
         java.util.Map<Long, BigDecimal> balances = new java.util.HashMap<>();
         return lineRepository.findLedgerByGroupId(groupId).stream().map(line -> {
@@ -74,6 +79,7 @@ public class AccountingService {
 
     @Transactional
     public LedgerLineResponse post(Long groupId, JournalEntryRequest request) {
+        authorizationService.requireMembership(groupId);
         VikobaGroup group = requireGroup(groupId);
         if (request.getLines() == null || request.getLines().size() < 2)
             throw new IllegalArgumentException("A journal entry must contain at least two lines.");
@@ -113,6 +119,7 @@ public class AccountingService {
 
     @Transactional
     public TrialBalanceResponse trialBalance(Long groupId) {
+        authorizationService.requireMembership(groupId);
         ensureDefaultAccounts(groupId);
         List<AccountResponse> accounts = balances(groupId);
         return TrialBalanceResponse.builder().accounts(accounts)
@@ -123,6 +130,7 @@ public class AccountingService {
 
     @Transactional
     public List<AccountResponse> ensureDefaultAccountsForGroup(Long groupId) {
+        authorizationService.requireMembership(groupId);
         ensureDefaultAccounts(groupId);
         return balances(groupId);
     }
