@@ -7,10 +7,14 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestTemplate;
 import vikoba.service.auth.entity.User;
 import vikoba.service.auth.repository.UserRepository;
@@ -41,6 +45,7 @@ public class SmsNotificationService {
     private final SystemSettingService systemSettingService;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final PlatformTransactionManager transactionManager;
 
     public boolean send(String customerPhone, String message) {
         if (customerPhone == null || customerPhone.trim().isEmpty()) {
@@ -54,12 +59,7 @@ public class SmsNotificationService {
         }
 
         User user = userRepository.findByPhone(customerPhone).orElse(null);
-        if (user == null) {
-            log.warn("SMS not persisted/sent because no user exists for phone {}", customerPhone);
-            return false;
-        }
-
-        Notification notification = notificationRepository.save(Notification.builder()
+        Notification notification = inNewTransaction(() -> notificationRepository.save(Notification.builder()
                 .user(user)
                 .title("Vikoba notification")
                 .message(isVerificationMessage(message) ? "Verification code requested; code not retained." : message)
@@ -67,7 +67,7 @@ public class SmsNotificationService {
                 .channel("SMS")
                 .deliveryStatus("PENDING")
                 .recipientPhone(customerPhone)
-                .build());
+                .build()));
 
         try {
             SmsJob job = new SmsJob(notification.getId(), customerPhone, message, 0);
@@ -76,10 +76,9 @@ public class SmsNotificationService {
             kafkaTemplate.send(TOPIC, notification.getId().toString(), payload)
                     .whenComplete((result, throwable) -> {
                         if (throwable != null) {
-                            notification.setDeliveryStatus("FAILED");
-                            notification.setProviderResponse(isVerificationMessage(message)
-                                    ? "Unable to enqueue verification SMS" : "Unable to enqueue SMS: " + throwable.getMessage());
-                            notificationRepository.save(notification);
+                            updateDelivery(notification.getId(), "FAILED", isVerificationMessage(message)
+                                    ? "Unable to enqueue verification SMS"
+                                    : "Unable to enqueue SMS: " + throwable.getMessage());
                             if (isVerificationMessage(message)) {
                                 log.warn("Unable to enqueue verification SMS notification {}", notification.getId());
                             } else {
@@ -92,10 +91,8 @@ public class SmsNotificationService {
 
             return true;
         } catch (Exception e) {
-            notification.setDeliveryStatus("FAILED");
-            notification.setProviderResponse(isVerificationMessage(message)
+            updateDelivery(notification.getId(), "FAILED", isVerificationMessage(message)
                     ? "Unable to enqueue verification SMS" : "Unable to enqueue SMS: " + e.getMessage());
-            notificationRepository.save(notification);
             if (isVerificationMessage(message)) {
                 log.warn("Unable to enqueue verification SMS notification {}", notification.getId());
             } else {
@@ -172,11 +169,11 @@ public class SmsNotificationService {
 
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
 
-            ResponseEntity<Map> response = restTemplate.exchange(
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                     systemSettingService.get("sms.dispatch.url", dbEnv.smsUrl),
                     HttpMethod.POST,
                     request,
-                    Map.class);
+                    new ParameterizedTypeReference<>() {});
 
             if (response.getStatusCode().is2xxSuccessful()) {
                 notification.setDeliveryStatus("SENT");
@@ -258,6 +255,23 @@ public class SmsNotificationService {
 
     private boolean isVerificationMessage(String message) {
         return message != null && message.startsWith("VIKOBA360 verification code: ");
+    }
+
+    private void updateDelivery(Long notificationId, String status, String providerResponse) {
+        inNewTransaction(() -> {
+            notificationRepository.findById(notificationId).ifPresent(notification -> {
+                notification.setDeliveryStatus(status);
+                notification.setProviderResponse(providerResponse);
+                notificationRepository.save(notification);
+            });
+            return null;
+        });
+    }
+
+    private <T> T inNewTransaction(java.util.function.Supplier<T> operation) {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return transaction.execute(status -> operation.get());
     }
 
     private String failureReason(SmsJob job, Exception exception) {

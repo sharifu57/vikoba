@@ -25,8 +25,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 public class Notification extends BaseEntity{
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
     private User user;
 
     @Column(nullable = false, length = 200)

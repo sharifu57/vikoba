@@ -32,6 +32,17 @@ WHERE user_id = (SELECT id FROM users WHERE phone = '2557XXXXXXXX')
 The backend checks current database grants on every system request, so revocation
 does not depend on changing a browser flag or waiting for a token to expire.
 
+## Chair appointment SMS
+
+After a chair appointment commits, the backend queues a congratulatory SMS to
+the selected member's phone number. The SMS is recorded in `notifications`
+before it is queued, including its recipient and delivery status. It is still
+logged and sent when the member does not yet have a linked login account; the
+SMS notification migration makes the account link optional for these records.
+Provider acceptance and delivery failures update the notification record, and
+failed deliveries are retried. Final handset receipt depends on the SMS provider
+and cannot be guaranteed unless its delivery-receipt callback is configured.
+
 ## Chairperson policy
 
 - A newly created group starts with its creator/registrant as chairperson. Group

@@ -5,21 +5,26 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.security.core.context.SecurityContextHolder;
 import vikoba.service.common.enums.*;
 import vikoba.service.common.repository.AuditLogRepository;
 import vikoba.service.common.service.AuditLogService;
+import vikoba.service.notification.SmsNotificationService;
 import vikoba.service.organization.entity.*;
 import vikoba.service.organization.repository.*;
 import vikoba.service.auth.repository.UserRepository;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SystemAdminService {
     private final SystemAdminAccess access;
     private final VikobaGroupRepository groups;
@@ -30,6 +35,7 @@ public class SystemAdminService {
     private final MemberRoleRepository roles;
     private final AuditLogRepository audits;
     private final AuditLogService auditService;
+    private final SmsNotificationService smsNotificationService;
 
     public record Person(Long membershipId, Long memberId, String name, String phone, String email,
                          String membershipNumber, String status, Long groupId, String groupName,
@@ -101,7 +107,32 @@ public class SystemAdminService {
                 AuditAction.UPDATE, "GROUP_CHAIR", groupId, null,
                 "Chair changed from " + previous + " to " + name(next.getMember()) + " (#" + membershipId
                         + "). Reason: " + reason.trim());
+        notifyNewChairAfterCommit(next.getMember().getPhone(), name(next.getMember()), group.getName(), groupId);
         return groupRow(group);
+    }
+    private void notifyNewChairAfterCommit(String phone, String chairName, String groupName, Long groupId) {
+        String message = "VIKOBA360: Hongera " + chairName + "! Umechaguliwa kuwa Mwenyekiti wa kikundi cha "
+                + groupName + ". Wasiliana na wanachama kwa maelekezo zaidi.";
+        Runnable sendNotification = () -> {
+            try {
+                if (!smsNotificationService.send(phone, message)) {
+                    log.warn("Chair appointment committed for group {} but SMS notification could not be queued",
+                            groupId);
+                }
+            } catch (RuntimeException exception) {
+                log.error("Chair appointment committed for group {} but SMS notification failed", groupId, exception);
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    sendNotification.run();
+                }
+            });
+        } else {
+            sendNotification.run();
+        }
     }
     private List<MemberRole> chairRoles(Long groupId) {
         return roles.findByGroupMemberGroupIdAndActiveTrue(groupId).stream()

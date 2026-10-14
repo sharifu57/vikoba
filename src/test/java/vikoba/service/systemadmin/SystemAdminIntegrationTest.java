@@ -13,19 +13,26 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import vikoba.service.auth.entity.*;
 import vikoba.service.auth.repository.*;
+import vikoba.service.common.entity.Notification;
 import vikoba.service.common.enums.*;
 import vikoba.service.common.repository.AuditLogRepository;
+import vikoba.service.common.repository.NotificationRepository;
 import vikoba.service.organization.dto.MemberAccessRequest;
 import vikoba.service.organization.dto.UpdateMembershipStatusRequest;
 import vikoba.service.organization.entity.*;
 import vikoba.service.organization.repository.*;
 import vikoba.service.organization.service.MemberService;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 
 @SpringBootTest
 class SystemAdminIntegrationTest {
@@ -45,6 +52,8 @@ class SystemAdminIntegrationTest {
     @Autowired org.springframework.web.context.WebApplicationContext context;
     @Autowired org.springframework.security.web.FilterChainProxy securityFilter;
     @Autowired vikoba.service.config.JwtService jwt;
+    @Autowired NotificationRepository notifications;
+    @MockitoBean KafkaTemplate<String, String> kafkaTemplate;
     record Fixture(String phone, Long group, Long oldChair, Long next, Long other) {}
 
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
@@ -128,9 +137,21 @@ class SystemAdminIntegrationTest {
     }
     @Test void appointmentReplacesAliasPreservesOtherOfficesAndRecordsActorAndReason() {
         var f = fixture(true); login(f.phone());
+        var candidate = service.members(f.group(), "", 0, 20).getContent().stream()
+                .filter(member -> member.membershipId().equals(f.next())).findFirst().orElseThrow();
+        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
+                .thenReturn(java.util.concurrent.CompletableFuture.completedFuture(null));
         var result = service.changeChair(f.group(), f.next(), f.oldChair(), "New election result");
         assertEquals(1, result.chairs().size());
         assertEquals(f.next(), result.chairs().getFirst().membershipId());
+        Notification sms = notifications.findAll().stream()
+                .filter(notification -> candidate.phone().equals(notification.getRecipientPhone()))
+                .filter(notification -> "SMS".equals(notification.getChannel()))
+                .findFirst().orElseThrow();
+        assertNull(sms.getUser(), "SMS delivery history must be stored even without a linked login account");
+        assertEquals("PENDING", sms.getDeliveryStatus());
+        assertTrue(sms.getMessage().contains("Mwenyekiti wa kikundi cha " + candidate.groupName()));
+        verify(kafkaTemplate).send(eq("vikoba.sms"), eq(sms.getId().toString()), anyString());
         assertTrue(active(f.group()).stream().anyMatch(r -> r.getRole() == GroupRole.ACCOUNTANT));
         assertTrue(service.audit(0, 100).getContent().stream().anyMatch(a ->
                 a.actor().equals(f.phone()) && a.description().contains("New election result")));
