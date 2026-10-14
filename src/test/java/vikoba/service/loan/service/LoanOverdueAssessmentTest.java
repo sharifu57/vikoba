@@ -19,6 +19,7 @@ class LoanOverdueAssessmentTest {
     @Mock LoanApprovalStepRepository approvalSteps;
     @Mock LoanApprovalEventRepository approvalEvents;
     @Mock LoanGuarantorRepository guarantors;
+    @Mock vikoba.service.organization.repository.GroupSettingsRepository settings;
     @Mock vikoba.service.organization.service.GroupAuthorizationService authorizationService;
     @InjectMocks LoanWorkflowService service;
     final LocalDate today = LocalDate.of(2026, 10, 1);

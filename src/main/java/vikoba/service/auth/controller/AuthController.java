@@ -24,9 +24,7 @@ public class AuthController {
     public record RetryInfo(long retryAfterSeconds) {}
     @org.springframework.web.bind.annotation.ExceptionHandler(AuthService.OtpCooldownException.class)
     public ResponseEntity<AuthResponse<RetryInfo>> cooldown(AuthService.OtpCooldownException error) {
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                .header("Retry-After", Long.toString(error.getRetryAfterSeconds()))
-                .body(new AuthResponse<>(false, error.getReason(), new RetryInfo(error.getRetryAfterSeconds())));
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", Long.toString(error.getRetryAfterSeconds())).body(new AuthResponse<>(false, error.getReason(), new RetryInfo(error.getRetryAfterSeconds())));
     }
     private final AuthService authService;
 
@@ -39,27 +37,23 @@ public class AuthController {
     }
 
     @PostMapping("/lookup")
-    public ResponseEntity<AuthResponse<AuthLookUpResponse>> lookup(
-            @RequestBody LoginRequest request) {
+    public ResponseEntity<AuthResponse<AuthLookUpResponse>> lookup(@RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.lookUp(request));
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse<AuthLookUpResponse>> register(
-            @RequestBody RegisterRequest request) {
+    public ResponseEntity<AuthResponse<AuthLookUpResponse>> register(@RequestBody RegisterRequest request) {
         return ResponseEntity.ok(authService.register(request));
     }
 
     @PostMapping("/verify-otp")
-    public ResponseEntity<AuthResponse<UserSessionWithGroupResponse>> verifyOtp(
-            @RequestBody VerifyOtpRequest request) {
+    public ResponseEntity<AuthResponse<UserSessionWithGroupResponse>> verifyOtp(@RequestBody VerifyOtpRequest request) {
         AuthResponse<UserSessionWithGroupResponse> response = authService.verifyOtp(request);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/resend-otp")
-    public ResponseEntity<AuthResponse<Void>> resendOtp(
-            @RequestBody ResendOtpRequest request) {
+    public ResponseEntity<AuthResponse<Void>> resendOtp(@RequestBody ResendOtpRequest request) {
         AuthResponse<Void> response = authService.resendOtp(request);
         return ResponseEntity.ok(response);
     }

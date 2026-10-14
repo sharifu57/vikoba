@@ -48,6 +48,7 @@ public class LoanResponse {
 
     private String rejectionReason;
     private BigDecimal latePaymentFine;
+    private BigDecimal latePaymentFinePercentage;
     private BigDecimal totalPaid;
     private BigDecimal remainingBalance;
     private Integer progress;

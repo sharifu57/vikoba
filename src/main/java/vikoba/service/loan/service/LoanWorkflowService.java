@@ -81,8 +81,7 @@ public class LoanWorkflowService {
         if (groupEndDate == null || !groupEndDate.isAfter(today)) return 0;
         int configured = setting.getDefaultLoanDurationMonths() == null ? 0 : setting.getDefaultLoanDurationMonths();
         if (configured <= 0) return 0;
-        int productLimit = product == null || product.getMaxDurationMonths() == null
-                ? configured : product.getMaxDurationMonths();
+        int productLimit = product == null || product.getMaxDurationMonths() == null ? configured : product.getMaxDurationMonths();
         int max = Math.min(configured, productLimit);
         int allowed = 0;
         while (allowed < max && !today.plusMonths(allowed + 1L).isAfter(groupEndDate)) allowed++;
@@ -139,8 +138,7 @@ public class LoanWorkflowService {
 
         // 2. Prevent multiple open loans
         if (!loans.findOpenByGroupMemberId(member.getId()).isEmpty()) {
-            throw new IllegalArgumentException(
-                    "The member already has an open loan application or loan.");
+            throw new IllegalArgumentException("The member already has an open loan application or loan.");
         }
         if (guarantorCommitted(member.getId())) {
             throw new IllegalArgumentException("You cannot apply while guaranteeing another open loan.");
@@ -154,9 +152,7 @@ public class LoanWorkflowService {
         validateGuarantors(groupId, member, r.getGuarantorIds(), settings.getRequiredLoanGuarantors());
 
         // 4. Requested amount
-        BigDecimal amount = positive(
-                r.getPrincipalAmount(),
-                "principal amount");
+        BigDecimal amount = positive(r.getPrincipalAmount(), "principal amount");
 
         // 5. Calculate member contribution value
         BigDecimal sharesValue = shareValue(groupId, member.getId());
@@ -168,8 +164,7 @@ public class LoanWorkflowService {
         BigDecimal multiplier = orZero(settings.getLoanMultiplier());
 
         if (multiplier.signum() <= 0) {
-            throw new IllegalArgumentException(
-                    "Loan multiplier has not been configured for this group.");
+            throw new IllegalArgumentException("Loan multiplier has not been configured for this group.");
         }
 
         // 9. Calculate maximum loan
@@ -250,14 +245,11 @@ public class LoanWorkflowService {
                         .totalAmount(amount.add(interest))
                         .durationMonths(months)
                         .applicationDate(LocalDate.now())
-                        .status((settings.getRequiredLoanGuarantors() == null || settings.getRequiredLoanGuarantors() == 0)
-                                ? LoanStatus.UNDER_REVIEW : LoanStatus.PENDING)
-                        .purpose(required(
-                                r.getPurpose(),
-                                "purpose"))
+                        .status((settings.getRequiredLoanGuarantors() == null || settings.getRequiredLoanGuarantors() == 0) ? LoanStatus.UNDER_REVIEW : LoanStatus.PENDING)
+                        .purpose(required(r.getPurpose(), "purpose"))
                         .consentAcceptedAt(LocalDateTime.now())
                         .requiredGuarantorsAtApplication(settings.getRequiredLoanGuarantors())
-                        .lateFineAtApplication(orZero(settings.getLatePaymentFine()))
+                        .lateFineAtApplication(calculateLateFine(amount, settings.getLatePaymentFine()))
                         .build());
 
         List<Long> guarantorIds = r.getGuarantorIds() == null ? List.of() : r.getGuarantorIds();
@@ -585,7 +577,7 @@ public class LoanWorkflowService {
         BigDecimal fine = loan.getLateFineAtApplication();
         if (fine == null) {
             fine = settings.findByGroupId(loan.getGroupMember().getGroup().getId())
-                    .map(setting -> orZero(setting.getLatePaymentFine()))
+                    .map(setting -> calculateLateFine(loan.getPrincipalAmount(), setting.getLatePaymentFine()))
                     .orElseThrow(() -> new IllegalArgumentException("Loan settings not found."));
         }
         int count = 0;
@@ -693,9 +685,13 @@ public class LoanWorkflowService {
                 .progress(total.signum() == 0 ? 0
                         : paid.multiply(BigDecimal.valueOf(100)).divide(total, 0, RoundingMode.DOWN).intValue())
                 .latePaymentFine(l.getLateFineAtApplication() == null
-                        ? settings.findByGroupId(l.getGroupMember().getGroup().getId())
-                                .map(GroupSettings::getLatePaymentFine).orElse(BigDecimal.ZERO)
+                        ? (settings == null ? BigDecimal.ZERO : settings.findByGroupId(l.getGroupMember().getGroup().getId())
+                                .map(setting -> calculateLateFine(l.getPrincipalAmount(), setting.getLatePaymentFine()))
+                                .orElse(BigDecimal.ZERO))
                         : l.getLateFineAtApplication())
+                .latePaymentFinePercentage(settings == null ? BigDecimal.ZERO
+                        : settings.findByGroupId(l.getGroupMember().getGroup().getId())
+                                .map(GroupSettings::getLatePaymentFine).orElse(BigDecimal.ZERO))
                 .consentAcceptedAt(l.getConsentAcceptedAt())
                 .canApprove(reviewer).canDisburse(l.getStatus() == LoanStatus.APPROVED && !self && savedSteps.isEmpty() && authorizationService.hasRole(groupId, GroupRole.ACCOUNTANT)).canCancel((l.getStatus() == LoanStatus.PENDING || l.getStatus() == LoanStatus.UNDER_REVIEW) && (self || reviewer))
                 .approvalSteps(savedSteps.stream().map(item ->
@@ -713,6 +709,15 @@ public class LoanWorkflowService {
         if (n == null || n.signum() <= 0)
             throw new IllegalArgumentException(f + " must be greater than zero.");
         return n;
+    }
+
+    private BigDecimal calculateLateFine(BigDecimal principal, BigDecimal finePercentage) {
+        if (principal == null || finePercentage == null || finePercentage.signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return principal
+                .multiply(finePercentage)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal orZero(BigDecimal n) {

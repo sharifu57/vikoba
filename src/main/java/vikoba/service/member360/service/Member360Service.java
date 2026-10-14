@@ -56,62 +56,24 @@ public class Member360Service {
     public Member360Response getMember360(Long groupMemberId) {
 
         if (groupMemberId == null) {
-            throw new IllegalArgumentException(
-                    "groupMemberId is required"
-            );
+            throw new IllegalArgumentException("groupMemberId is required");
         }
 
+        GroupMember groupMember = groupMemberRepository.findById(groupMemberId).orElseThrow(() -> new IllegalArgumentException("Member not found."));
 
-        // ============================================================
-        // 1. FIND GROUP MEMBER
-        // ============================================================
-
-        GroupMember groupMember =
-                groupMemberRepository
-                        .findById(groupMemberId)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Member not found."
-                                )
-                        );
-
-
-        // ============================================================
-        // 2. GET GROUP
-        // ============================================================
-
-        VikobaGroup group =
-                groupMember.getGroup();
+        VikobaGroup group = groupMember.getGroup();
 
         if (group == null) {
-
-            throw new IllegalArgumentException(
-                    "Group membership is not attached to a group."
-            );
+            throw new IllegalArgumentException("Group membership is not attached to a group.");
         }
 
         authorizationService.requireSelfOrGroupDashboardAccess(group.getId(), groupMemberId);
 
-
-        // ============================================================
-        // 3. GET MEMBER
-        // ============================================================
-
-        Member member =
-                groupMember.getMember();
+        Member member = groupMember.getMember();
 
         if (member == null) {
-
-            throw new IllegalArgumentException(
-                    "Group membership is not attached to a member."
-            );
+            throw new IllegalArgumentException("Group membership is not attached to a member.");
         }
-
-
-        // ============================================================
-        // 4. MEMBER INFORMATION
-        // ============================================================
-
         /*
          * IMPORTANT:
          *
