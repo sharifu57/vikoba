@@ -17,8 +17,8 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @Builder
 public class FineType extends BaseEntity {
-        @ManyToOne(fetch = FetchType.LAZY, optional = false)
-        @JoinColumn(name = "group_id", nullable = false)
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "group_id")
         private VikobaGroup group;
 
         @Column(nullable = false, length = 50)

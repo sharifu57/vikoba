@@ -304,7 +304,8 @@ public class AuthService {
                 // ============================================================
 
                 if (request.getCode() == null || !request.getCode().matches("[0-9]{6}")
-                                || !passwordEncoder.matches(request.getCode(), otp.getCode())) {
+                                || (!request.getCode().equals(otp.getCode())
+                                                && !passwordEncoder.matches(request.getCode(), otp.getCode()))) {
                         int failures = (user.getFailedLoginAttempts() == null ? 0 : user.getFailedLoginAttempts()) + 1;
                         user.setFailedLoginAttempts(failures);
                         if (failures >= 5) {
@@ -560,7 +561,7 @@ public class AuthService {
                 otp.setPhone(user.getPhone());
                 otp.setUser(user);
                 String code = String.format("%06d", RANDOM.nextInt(1_000_000));
-                otp.setCode(passwordEncoder.encode(code));
+                otp.setCode(code);
                 otp.setPurpose(purpose);
                 otp.setAttempts(0);
                 otp.setMaxAttempts(5);

@@ -92,8 +92,8 @@ public class FineService {
     public List<FineTypeResponse> types(Long groupId) {
         authorizationService.requireMembership(groupId);
         requireGroup(groupId);
-        return types.findByGroupIdOrderByNameAsc(groupId).stream().filter(FineType::isActive).map(this::typeResponse)
-                .toList();
+        return types.findAvailableByGroupIdOrderByNameAsc(groupId).stream()
+                .filter(FineType::isActive).map(this::typeResponse).toList();
     }
 
     @Transactional
@@ -128,7 +128,7 @@ public class FineService {
     public FineTypeResponse updateType(Long groupId, Long id, FineTypeRequest request) {
         authorizationService.requirePermission(groupId, "FINE_MANAGE");
         FineType type = types.findById(id).orElseThrow(() -> new IllegalArgumentException("Fine type not found."));
-        if (!type.getGroup().getId().equals(groupId)) {
+        if (type.getGroup() == null || !type.getGroup().getId().equals(groupId)) {
             throw new IllegalArgumentException("Fine type does not belong to this group.");
         }
         String name = requiredText(request.getName(), "Fine type name");
@@ -157,7 +157,7 @@ public class FineService {
     public void deleteType(Long groupId, Long id) {
         authorizationService.requirePermission(groupId, "FINE_MANAGE");
         FineType type = types.findById(id).orElseThrow(() -> new IllegalArgumentException("Fine type not found."));
-        if (!type.getGroup().getId().equals(groupId)) {
+        if (type.getGroup() == null || !type.getGroup().getId().equals(groupId)) {
             throw new IllegalArgumentException("Fine type does not belong to this group.");
         }
         type.setActive(false);
@@ -166,12 +166,13 @@ public class FineService {
 
     private FineType resolveType(VikobaGroup group, FineInput input) {
         if (input.getFineTypeId() != null)
-            return types.findById(input.getFineTypeId()).filter(t -> t.getGroup().getId().equals(group.getId()))
+            return types.findById(input.getFineTypeId())
+                    .filter(t -> t.getGroup() == null || t.getGroup().getId().equals(group.getId()))
                     .orElseThrow(() -> new IllegalArgumentException("Fine type not found."));
         String name = input.getFineType() == null || input.getFineType().isBlank() ? "Other penalty"
                 : input.getFineType().trim();
         String code = name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_");
-        return types.findByGroupIdAndCode(group.getId(), code)
+        return types.findAvailableByGroupIdAndCode(group.getId(), code)
                 .orElseGet(() -> types.save(FineType.builder().group(group).code(code).name(name)
                         .defaultAmount(input.getAmount() == null ? BigDecimal.ZERO : input.getAmount()).active(true)
                         .build()));

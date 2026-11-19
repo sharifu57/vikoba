@@ -180,7 +180,7 @@ public class MeetingService {
                 String fineCode = absent ? "MEETING_ABSENCE" : "MEETING_LATE";
                 String fineName = absent ? "Meeting absence" : "Late arrival";
                 FineType fineType = fineTypeRepository
-                        .findByGroupIdAndCode(meeting.getGroup().getId(), fineCode).orElseGet(() -> {
+                        .findAvailableByGroupIdAndCode(meeting.getGroup().getId(), fineCode).orElseGet(() -> {
                             FineType ft = FineType.builder()
                                     .group(meeting.getGroup())
                                     .code(fineCode)

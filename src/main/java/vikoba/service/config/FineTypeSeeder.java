@@ -6,15 +6,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import vikoba.service.fine.entity.FineType;
 import vikoba.service.fine.repository.FineTypeRepository;
-import vikoba.service.organization.repository.VikobaGroupRepository;
 import java.math.BigDecimal;
 import java.util.List;
 
-/** Adds the standard Tanzanian VIKOBA penalty catalogue to every group once. */
+/** Adds the standard Tanzanian VIKOBA penalty catalogue once as shared global fine types. */
 @Component
 @RequiredArgsConstructor
 public class FineTypeSeeder implements CommandLineRunner {
-    private final VikobaGroupRepository groupRepository;
     private final FineTypeRepository fineTypeRepository;
 
     private record DefaultType(String code, String name, String description, BigDecimal amount) {}
@@ -31,10 +29,9 @@ public class FineTypeSeeder implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        groupRepository.findAll().forEach(group -> DEFAULTS.forEach(definition ->
-                fineTypeRepository.findByGroupIdAndCode(group.getId(), definition.code()).orElseGet(() ->
-                        fineTypeRepository.save(FineType.builder().group(group).code(definition.code())
-                                .name(definition.name()).description(definition.description())
-                                .defaultAmount(definition.amount()).active(true).build()))));
+        DEFAULTS.forEach(definition -> fineTypeRepository.findGlobalByCode(definition.code()).orElseGet(() ->
+                fineTypeRepository.save(FineType.builder().code(definition.code())
+                        .name(definition.name()).description(definition.description())
+                        .defaultAmount(definition.amount()).active(true).build())));
     }
 }
