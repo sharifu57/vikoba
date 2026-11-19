@@ -37,6 +37,7 @@ import vikoba.service.organization.entity.Member;
 import vikoba.service.organization.entity.GroupMember;
 import vikoba.service.organization.entity.MemberRole;
 import vikoba.service.common.enums.MembershipType;
+import vikoba.service.config.FineTypeSeeder;
 
 @Service
 @RequiredArgsConstructor
@@ -50,6 +51,7 @@ public class VikobaService {
     private final MemberRepository memberRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final ShareApprovalWorkflowService shareApprovalWorkflowService;
+    private final FineTypeSeeder fineTypeSeeder;
 
     @Transactional
     public VikobaGroupCreateResponse createGroup(VikobaGroupCreateRequest request) {
@@ -89,6 +91,7 @@ public class VikobaService {
                 .endDate(endDate)
                 .currency(currency)
                 .build());
+        fineTypeSeeder.seedGroup(group);
 
         createGroupSettings(group, request.getSettings());
         shareApprovalWorkflowService.configure(group, null);
@@ -213,6 +216,7 @@ public class VikobaService {
                 .build();
 
         group = groupRepository.save(group);
+        fineTypeSeeder.seedGroup(group);
 
         // ============================================================
         // 7. CREATE GROUP SETTINGS

@@ -24,6 +24,7 @@ import vikoba.service.organization.repository.MemberRepository;
 import vikoba.service.organization.repository.MemberRoleRepository;
 import vikoba.service.organization.repository.OrganizationRepository;
 import vikoba.service.organization.repository.VikobaGroupRepository;
+import vikoba.service.config.FineTypeSeeder;
 
 import java.time.LocalDate;
 import java.util.Locale;
@@ -39,6 +40,7 @@ public class OrganizationRegistrationService {
         private final MemberRepository memberRepository;
         private final GroupMemberRepository groupMemberRepository;
         private final MemberRoleRepository memberRoleRepository;
+        private final FineTypeSeeder fineTypeSeeder;
 
         @Transactional
         public OrganizationRegistrationResponse register(OrganizationRegistrationRequest request) {
@@ -63,6 +65,7 @@ public class OrganizationRegistrationService {
                                 .formationDate(LocalDate.now())
                                 .currency("TZS")
                                 .build());
+                fineTypeSeeder.seedGroup(group);
 
                 groupSettingsRepository.save(GroupSettings.builder()
                                 .group(group)

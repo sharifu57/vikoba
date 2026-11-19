@@ -9,7 +9,9 @@ import java.math.BigDecimal;
 
 @Entity
 @Table(name = "fine_types", uniqueConstraints = {
-                @UniqueConstraint(name = "uk_fine_type_group_code", columnNames = { "group_id", "code" })
+                @UniqueConstraint(
+                        name = "uk_fine_type_group_code", columnNames = { "group_id", "code" }
+                )
 })
 @Getter
 @Setter
@@ -17,8 +19,8 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @Builder
 public class FineType extends BaseEntity {
-        @ManyToOne(fetch = FetchType.LAZY)
-        @JoinColumn(name = "group_id")
+        @ManyToOne(fetch = FetchType.LAZY, optional = false)
+        @JoinColumn(name = "group_id", nullable = false)
         private VikobaGroup group;
 
         @Column(nullable = false, length = 50)
