@@ -13,20 +13,13 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.List;
-import java.util.Arrays;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.config.Customizer;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfiguration {
-        @Value("${app.cors.allowed-origins:http://localhost:3000}")
-        private String allowedOrigins;
         private final AuthenticationProvider authenticationProvider;
         private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
@@ -45,7 +38,7 @@ public class SecurityConfiguration {
         @Bean
         SecurityFilterChain securityFilterChain(HttpSecurity http, AuthenticationManager authManager) throws Exception {
                 http
-                                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                                .cors(Customizer.withDefaults())
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth
                                                 .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
@@ -70,23 +63,5 @@ public class SecurityConfiguration {
                                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
                 return http.build();
-        }
-
-        // CORS
-        @Bean
-        CorsConfigurationSource corsConfigurationSource() {
-                CorsConfiguration configuration = new CorsConfiguration();
-                configuration.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
-                                .map(String::trim).filter(origin -> !origin.isEmpty()).toList());
-                configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-                configuration
-                                .setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin",
-                                                "X-Requested-With"));
-                configuration.setExposedHeaders(List.of("Authorization"));
-                configuration.setAllowCredentials(true);
-
-                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-                source.registerCorsConfiguration("/**", configuration);
-                return source;
         }
 }

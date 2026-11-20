@@ -180,15 +180,15 @@ class AuthSecurityTest {
         verifyNoInteractions(otps, sms);
     }
 
-    @Test void issuingCodeStoresOnlyItsHashAndSendsTheOriginalToSms() {
+    @Test void issuingCodeStoresPlainCodeAndSendsTheSameCodeToSms() {
         when(users.findByPhoneForUpdate(user.getPhone())).thenReturn(Optional.of(user));
-        when(passwords.encode(anyString())).thenReturn("stored-otp-hash");
         assertTrue(service.resendOtp(resend).isStatus());
         var saved = org.mockito.ArgumentCaptor.forClass(OTP.class);
         verify(otps).save(saved.capture());
-        assertEquals("stored-otp-hash", saved.getValue().getCode());
-        verify(sms).send(eq(user.getPhone()), argThat(message ->
-                message.matches("(?s)VIKOBA360 verification code: [0-9]{6}.*")
-                && !message.contains("stored-otp-hash")));
+        var message = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(sms).send(eq(user.getPhone()), message.capture());
+        assertTrue(message.getValue().matches("(?s)VIKOBA360 verification code: [0-9]{6}.*"));
+        String sentCode = message.getValue().replaceFirst("(?s)VIKOBA360 verification code: ([0-9]{6}).*", "$1");
+        assertEquals(sentCode, saved.getValue().getCode());
     }
 }

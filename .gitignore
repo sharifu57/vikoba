@@ -36,3 +36,10 @@ build/
 .env
 .env.*
 !.env.example
+
+
+.git
+.idea
+.vscode
+*.iml
+.DS_Store
