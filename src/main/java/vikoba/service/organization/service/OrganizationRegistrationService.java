@@ -89,6 +89,13 @@ public class OrganizationRegistrationService {
 
                 memberRoleRepository.save(MemberRole.builder()
                                 .groupMember(groupMember)
+                                .role(GroupRole.GROUP_ADMIN)
+                                .startDate(LocalDate.now())
+                                .active(true)
+                                .build());
+
+                memberRoleRepository.save(MemberRole.builder()
+                                .groupMember(groupMember)
                                 .role(GroupRole.GROUP_CHAIRMAN)
                                 .startDate(LocalDate.now())
                                 .active(true)
@@ -96,7 +103,7 @@ public class OrganizationRegistrationService {
 
                 return new OrganizationRegistrationResponse(
                                 organization.getId(), group.getId(), member.getId(),
-                                organization.getCode(), group.getCode(), GroupRole.GROUP_CHAIRMAN.name());
+                        organization.getCode(), group.getCode(), GroupRole.GROUP_ADMIN.name());
         }
 
         private Member buildMember(User user) {

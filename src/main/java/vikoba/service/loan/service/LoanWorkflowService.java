@@ -31,6 +31,7 @@ public class LoanWorkflowService {
     private final LoanRepository loans;
     private final LoanProductRepository products;
     private final LoanInstallmentRepository installments;
+    private final LoanPaymentRepository loanPayments;
     private final GroupMemberRepository members;
     private final GroupSettingsRepository settings;
     private final ShareTransactionRepository shareTransactions;
@@ -108,6 +109,14 @@ public class LoanWorkflowService {
         return loans.findByGroupId(groupId).stream().peek(loan -> {
             if (loan.getStatus() == LoanStatus.UNDER_REVIEW) steps(loan);
         }).map(this::response).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanRepaymentResponse> repayments(Long groupId) {
+        authorizationService.requireMembership(groupId);
+        return loanPayments.findByLoan_GroupMember_Group_IdOrderByCreatedAtDesc(groupId).stream()
+                .map(this::repaymentResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -702,6 +711,30 @@ public class LoanWorkflowService {
                         item.getId(), item.getGroupMember().getMember().getFirstName() + " " + item.getGroupMember().getMember().getLastName(),
                         item.getGroupMember().getMember().getPhone(), item.getGroupMember().getMember().getAddress(),
                         item.getGroupMember().getMembershipNumber(), item.getStatus().name(), false, null)).toList())
+                .build();
+    }
+
+    private LoanRepaymentResponse repaymentResponse(LoanPayment repayment) {
+        Loan loan = repayment.getLoan();
+        GroupMember member = loan.getGroupMember();
+        Payment payment = repayment.getPayment();
+        String memberName = member.getMember().getFirstName() + " " + member.getMember().getLastName();
+        boolean completed = payment.getStatus() == PaymentStatus.COMPLETED;
+
+        return LoanRepaymentResponse.builder()
+                .id(repayment.getId())
+                .loanId(loan.getId())
+                .loanNumber(loan.getLoanNumber())
+                .groupMemberId(member.getId())
+                .memberName(memberName)
+                .amount(repayment.getTotalAmount())
+                .paymentMethod(payment.getPaymentMethod().name())
+                .externalReference(payment.getExternalReference())
+                .status(payment.getStatus().name())
+                .submittedAt(payment.getPaymentDate())
+                .reviewedAt(completed ? payment.getUpdatedAt() : null)
+                .rejectionReason(null)
+                .canApprove(false)
                 .build();
     }
 

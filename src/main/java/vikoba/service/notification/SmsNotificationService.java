@@ -58,16 +58,21 @@ public class SmsNotificationService {
             return false;
         }
 
-        User user = userRepository.findByPhone(customerPhone).orElse(null);
-        Notification notification = inNewTransaction(() -> notificationRepository.save(Notification.builder()
-                .user(user)
-                .title("Vikoba notification")
-                .message(isVerificationMessage(message) ? "Verification code requested; code not retained." : message)
-                .type(NotificationType.INFO)
-                .channel("SMS")
-                .deliveryStatus("PENDING")
-                .recipientPhone(customerPhone)
-                .build()));
+        Notification notification = inNewTransaction(() -> {
+            // Resolve the user inside the notification transaction. During
+            // registration the new user is still uncommitted in the caller's
+            // transaction and therefore must not be attached to this row.
+            User user = userRepository.findByPhone(customerPhone).orElse(null);
+            return notificationRepository.save(Notification.builder()
+                    .user(user)
+                    .title("Vikoba notification")
+                    .message(isVerificationMessage(message) ? "Verification code requested; code not retained." : message)
+                    .type(NotificationType.INFO)
+                    .channel("SMS")
+                    .deliveryStatus("PENDING")
+                    .recipientPhone(customerPhone)
+                    .build());
+        });
 
         try {
             SmsJob job = new SmsJob(notification.getId(), customerPhone, message, 0);

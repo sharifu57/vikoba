@@ -108,6 +108,12 @@ public class LoanController {
                 ApiResponse.success("Repayment schedule retrieved successfully.", service.schedule(groupId, loanId)));
     }
 
+    @GetMapping("/repayments")
+    public ResponseEntity<ApiResponse<List<LoanRepaymentResponse>>> repayments(@PathVariable Long groupId) {
+        return ResponseEntity.ok(
+                ApiResponse.success("Loan repayments retrieved successfully.", service.repayments(groupId)));
+    }
+
     @PostMapping("/{loanId}/repayments")
     public ResponseEntity<ApiResponse<LoanResponse>> repay(@PathVariable Long groupId, @PathVariable Long loanId,
             @RequestBody LoanRepaymentRequest r) {
