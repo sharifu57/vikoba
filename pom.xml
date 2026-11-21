@@ -34,6 +34,7 @@
 		<tomcat.version>11.0.25</tomcat.version>
 		<postgresql.version>42.7.12</postgresql.version>
 		<log4j2.version>2.25.5</log4j2.version>
+		<logbook.version>4.2.0</logbook.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -45,6 +46,11 @@
 		</dependencies>
 	</dependencyManagement>
 	<dependencies>
+		<dependency>
+			<groupId>org.zalando</groupId>
+			<artifactId>logbook-spring-boot-starter</artifactId>
+			<version>${logbook.version}</version>
+		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
