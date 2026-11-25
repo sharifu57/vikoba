@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.Optional;
 import java.util.LinkedHashSet;
 import vikoba.service.notification.SmsNotificationService;
+import vikoba.service.notification.WhatsAppOtpService;
 
 @Slf4j
 @Service
@@ -44,6 +45,7 @@ public class AuthService {
         private final vikoba.service.organization.repository.GroupSettingsRepository groupSettingsRepository;
         private final PasswordEncoder passwordEncoder;
         private final SmsNotificationService smsNotificationService;
+        private final WhatsAppOtpService whatsAppOtpService;
         private final MemberRoleRepository memberRoleRepository;
         private final RoleRepository roleRepository;
         private final MemberPermissionRepository memberPermissionRepository;
@@ -569,10 +571,15 @@ public class AuthService {
                 otp.setIsExpired(false);
                 otp.setExpiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRATION_MINUTES));
                 otpRepository.save(otp);
-                boolean sent = smsNotificationService.send(
-                                user.getPhone(),
-                                "VIKOBA360 verification code: " + code
-                                                + "\nNamba ya uthibitisho. Inaisha baada ya dakika 5. Usimpe mtu yeyote.");
+                log.info("Attempting WhatsApp OTP delivery");
+                boolean sent = whatsAppOtpService.send(user.getPhone(), code);
+                if (!sent) {
+                        log.info("WhatsApp OTP was not accepted; dispatching SMS directly");
+                        sent = smsNotificationService.sendOtp(
+                                        user.getPhone(),
+                                        "VIKOBA360 verification code: " + code
+                                                        + "\nNamba ya uthibitisho. Inaisha baada ya dakika 5. Usimpe mtu yeyote.");
+                }
                 if (!sent) {
                         log.warn("OTP generated but SMS delivery failed for {}", user.getPhone());
                 }

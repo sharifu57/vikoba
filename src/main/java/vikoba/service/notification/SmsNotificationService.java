@@ -46,6 +46,7 @@ public class SmsNotificationService {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final PlatformTransactionManager transactionManager;
+    private final WhatsAppOtpService whatsAppOtpService;
 
     public boolean send(String customerPhone, String message) {
         if (customerPhone == null || customerPhone.trim().isEmpty()) {
@@ -78,12 +79,14 @@ public class SmsNotificationService {
             SmsJob job = new SmsJob(notification.getId(), customerPhone, message, 0);
             String payload = objectMapper.writeValueAsString(job);
 
-            kafkaTemplate.send(TOPIC, notification.getId().toString(), payload)
-                    .whenComplete((result, throwable) -> {
+            kafkaTemplate.send(TOPIC, notification.getId().toString(), payload).whenComplete((result, throwable) -> {
                         if (throwable != null) {
-                            updateDelivery(notification.getId(), "FAILED", isVerificationMessage(message)
-                                    ? "Unable to enqueue verification SMS"
-                                    : "Unable to enqueue SMS: " + throwable.getMessage());
+                            boolean fallbackSent = fallbackOtpToWhatsApp(notification.getId(), customerPhone, message);
+                            if (!fallbackSent) {
+                                updateDelivery(notification.getId(), "FAILED", isVerificationMessage(message)
+                                        ? "Unable to enqueue verification SMS"
+                                        : "Unable to enqueue SMS: " + throwable.getMessage());
+                            }
                             if (isVerificationMessage(message)) {
                                 log.warn("Unable to enqueue verification SMS notification {}", notification.getId());
                             } else {
@@ -96,15 +99,52 @@ public class SmsNotificationService {
 
             return true;
         } catch (Exception e) {
-            updateDelivery(notification.getId(), "FAILED", isVerificationMessage(message)
-                    ? "Unable to enqueue verification SMS" : "Unable to enqueue SMS: " + e.getMessage());
+            boolean fallbackSent = fallbackOtpToWhatsApp(notification.getId(), customerPhone, message);
+            if (!fallbackSent) {
+                updateDelivery(notification.getId(), "FAILED", isVerificationMessage(message)
+                        ? "Unable to enqueue verification SMS" : "Unable to enqueue SMS: " + e.getMessage());
+            }
             if (isVerificationMessage(message)) {
                 log.warn("Unable to enqueue verification SMS notification {}", notification.getId());
             } else {
                 log.warn("Unable to enqueue SMS for {}: {}", customerPhone, e.getMessage(), e);
             }
+            return fallbackSent;
+        }
+    }
+
+    /** Dispatch authentication SMS immediately so OTP delivery does not depend on Kafka availability. */
+    public boolean sendOtp(String customerPhone, String message) {
+        if (customerPhone == null || customerPhone.isBlank() || !isVerificationMessage(message)) {
+            log.warn("Verification SMS not sent: invalid phone or message");
             return false;
         }
+
+        Notification notification = inNewTransaction(() -> {
+            User user = userRepository.findByPhone(customerPhone).orElse(null);
+            return notificationRepository.save(Notification.builder()
+                    .user(user)
+                    .title("Vikoba notification")
+                    .message("Verification code requested; code not retained.")
+                    .type(NotificationType.INFO)
+                    .channel("SMS")
+                    .deliveryStatus("PENDING")
+                    .recipientPhone(customerPhone)
+                    .build());
+        });
+
+        log.info("Dispatching verification SMS directly to the SMS provider");
+        deliver(new SmsJob(notification.getId(), customerPhone, message, 0));
+        String status = inNewTransaction(() -> notificationRepository.findById(notification.getId())
+                .map(Notification::getDeliveryStatus).orElse("MISSING"));
+        if ("SENT".equals(status)) {
+            log.info("SMS provider accepted verification notification {}", notification.getId());
+        } else if ("RETRYING".equals(status)) {
+            log.warn("SMS provider did not accept verification message yet; retry is queued");
+        } else {
+            log.error("SMS and WhatsApp delivery failed for verification notification {}", notification.getId());
+        }
+        return "SENT".equals(status) || "RETRYING".equals(status);
     }
 
     @KafkaListener(topics = TOPIC, groupId = "${spring.kafka.consumer.group-id:vikoba360-sms}")
@@ -152,9 +192,12 @@ public class SmsNotificationService {
 
         String senderIdentity = systemSettingService.get("sms.sender.id", dbEnv.senderId);
         if (dbEnv.smsApiKey == null || dbEnv.smsApiKey.isBlank()) {
-            notification.setDeliveryStatus("FAILED");
-            notification.setProviderResponse("SMS provider secret is not configured");
-            notificationRepository.save(notification);
+            log.warn("SMS OTP dispatch skipped: SMS API key is not configured");
+            if (!fallbackOtpToWhatsApp(job.notificationId(), job.phone(), job.message())) {
+                notification.setDeliveryStatus("FAILED");
+                notification.setProviderResponse("SMS provider secret is not configured");
+                notificationRepository.save(notification);
+            }
             return;
         }
 
@@ -186,6 +229,9 @@ public class SmsNotificationService {
                         ? "Verification SMS accepted by provider." : String.valueOf(response.getBody()));
                 notification.setSentAt(LocalDateTime.now());
                 notificationRepository.save(notification);
+                if (isVerificationMessage(job.message())) {
+                    log.info("SMS provider accepted verification notification {}", job.notificationId());
+                }
                 return;
             }
 
@@ -198,6 +244,9 @@ public class SmsNotificationService {
 
     private void handleDeliveryFailure(SmsJob job, Notification notification, Exception e) {
         int nextAttempt = job.attempt() + 1;
+        if (isVerificationMessage(job.message())) {
+            log.warn("SMS OTP provider dispatch failed ({})", safeFailureSummary(e));
+        }
 
         if (job.attempt() < MAX_RETRIES) {
             notification.setDeliveryStatus("RETRYING");
@@ -210,15 +259,23 @@ public class SmsNotificationService {
                         new SmsJob(job.notificationId(), job.phone(), job.message(), nextAttempt)))
                         .whenComplete((result, throwable) -> {
                             if (throwable != null) {
+                                if (fallbackOtpToWhatsApp(job.notificationId(), job.phone(), job.message())) {
+                                    return;
+                                }
                                 if (isVerificationMessage(job.message())) {
+                                    updateDelivery(job.notificationId(), "FAILED", "Unable to enqueue verification SMS retry");
                                     log.warn("Failed to enqueue verification SMS retry for notification {}", job.notificationId());
                                 } else {
+                                    updateDelivery(job.notificationId(), "FAILED", "SMS retry queue failed");
                                     log.warn("Failed to enqueue SMS retry for notification {} to {}", job.notificationId(),
                                             job.phone(), throwable);
                                 }
                             }
                         });
             } catch (Exception queueException) {
+                if (fallbackOtpToWhatsApp(job.notificationId(), job.phone(), job.message())) {
+                    return;
+                }
                 notification.setDeliveryStatus("FAILED");
                 notification.setProviderResponse(isVerificationMessage(job.message())
                         ? "Verification SMS retry queue failed" : "Retry queue failed: " + queueException.getMessage());
@@ -230,6 +287,11 @@ public class SmsNotificationService {
                             queueException.getMessage(), queueException);
                 }
             }
+            return;
+        }
+
+        if (fallbackOtpToWhatsApp(job.notificationId(), job.phone(), job.message())) {
+            log.info("SMS delivery failed; WhatsApp fallback accepted for notification {}", job.notificationId());
             return;
         }
 
@@ -262,6 +324,28 @@ public class SmsNotificationService {
         return message != null && message.startsWith("VIKOBA360 verification code: ");
     }
 
+    private boolean fallbackOtpToWhatsApp(Long notificationId, String phone, String message) {
+        if (!isVerificationMessage(message)) {
+            return false;
+        }
+        String prefix = "VIKOBA360 verification code: ";
+        String code = message.substring(prefix.length()).split("\\R", 2)[0].trim();
+        if (code.isBlank() || !whatsAppOtpService.send(phone, code)) {
+            return false;
+        }
+        inNewTransaction(() -> {
+            notificationRepository.findById(notificationId).ifPresent(notification -> {
+                notification.setChannel("WHATSAPP");
+                notification.setDeliveryStatus("SENT");
+                notification.setProviderResponse("SMS failed; WhatsApp accepted the verification message.");
+                notification.setSentAt(LocalDateTime.now());
+                notificationRepository.save(notification);
+            });
+            return null;
+        });
+        return true;
+    }
+
     private void updateDelivery(Long notificationId, String status, String providerResponse) {
         inNewTransaction(() -> {
             notificationRepository.findById(notificationId).ifPresent(notification -> {
@@ -281,6 +365,13 @@ public class SmsNotificationService {
 
     private String failureReason(SmsJob job, Exception exception) {
         return isVerificationMessage(job.message()) ? "SMS provider request failed" : exception.getMessage();
+    }
+
+    private String safeFailureSummary(Exception exception) {
+        if (exception instanceof org.springframework.web.client.RestClientResponseException responseException) {
+            return "HTTP " + responseException.getStatusCode().value();
+        }
+        return exception.getClass().getSimpleName();
     }
 
     private record SmsJob(Long notificationId, String phone, String message, int attempt) {
