@@ -614,6 +614,9 @@ public class VikobaService {
         if (request.getLatePaymentFine() != null) {
             settings.setLatePaymentFine(nonNegative(request.getLatePaymentFine(), "latePaymentFine"));
         }
+        if (request.getLateLoanPaymentFinePercentage() != null) {
+            settings.setLateLoanPaymentFinePercentage(nonNegative(request.getLateLoanPaymentFinePercentage(), "lateLoanPaymentFinePercentage"));
+        }
         if (request.getJamiiContributionPerSharePayment() != null) {
             settings.setJamiiContributionPerSharePayment(nonNegative(request.getJamiiContributionPerSharePayment(), "jamiiContributionPerSharePayment"));
         }

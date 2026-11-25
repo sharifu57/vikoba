@@ -258,7 +258,7 @@ public class LoanWorkflowService {
                         .purpose(required(r.getPurpose(), "purpose"))
                         .consentAcceptedAt(LocalDateTime.now())
                         .requiredGuarantorsAtApplication(settings.getRequiredLoanGuarantors())
-                        .lateFineAtApplication(calculateLateFine(amount, settings.getLatePaymentFine()))
+                        .lateFineAtApplication(calculateLateFine(interest, settings.getLateLoanPaymentFinePercentage()))
                         .build());
 
         List<Long> guarantorIds = r.getGuarantorIds() == null ? List.of() : r.getGuarantorIds();
@@ -586,17 +586,22 @@ public class LoanWorkflowService {
         BigDecimal fine = loan.getLateFineAtApplication();
         if (fine == null) {
             fine = settings.findByGroupId(loan.getGroupMember().getGroup().getId())
-                    .map(setting -> calculateLateFine(loan.getPrincipalAmount(), setting.getLatePaymentFine()))
+                    .map(setting -> calculateLateFine(loan.getInterestAmount(), setting.getLateLoanPaymentFinePercentage()))
                     .orElseThrow(() -> new IllegalArgumentException("Loan settings not found."));
         }
+        int installmentCount = Math.max(1, loan.getDurationMonths());
+        BigDecimal regularFineShare = fine.divide(BigDecimal.valueOf(installmentCount), 2, RoundingMode.DOWN);
         int count = 0;
         for (LoanInstallment installment : installments.findByLoanIdOrderByInstallmentNumberAsc(loan.getId())) {
             if (installment.getDueDate().isBefore(today)
                     && installment.getPaidAmount().compareTo(installment.getTotalAmount()) < 0) {
                 installment.setStatus(InstallmentStatus.OVERDUE);
-                if (fine.signum() > 0 && orZero(installment.getPenaltyAmount()).signum() == 0) {
-                    installment.setPenaltyAmount(fine);
-                    installment.setTotalAmount(installment.getTotalAmount().add(fine));
+                BigDecimal installmentFine = installment.getInstallmentNumber() == installmentCount
+                        ? fine.subtract(regularFineShare.multiply(BigDecimal.valueOf(installmentCount - 1L)))
+                        : regularFineShare;
+                if (installmentFine.signum() > 0 && orZero(installment.getPenaltyAmount()).signum() == 0) {
+                    installment.setPenaltyAmount(installmentFine);
+                    installment.setTotalAmount(installment.getTotalAmount().add(installmentFine));
                     count++;
                 }
                 installments.save(installment);
@@ -680,6 +685,13 @@ public class LoanWorkflowService {
                         : s.stream().map(LoanInstallmentResponse::getTotalAmount).reduce(BigDecimal.ZERO,
                                 BigDecimal::add),
                 balance = total.subtract(paid);
+        BigDecimal totalLateFine = l.getLateFineAtApplication() == null
+                ? (settings == null ? BigDecimal.ZERO : settings.findByGroupId(groupId)
+                        .map(setting -> calculateLateFine(l.getInterestAmount(), setting.getLateLoanPaymentFinePercentage()))
+                        .orElse(BigDecimal.ZERO))
+                : l.getLateFineAtApplication();
+        BigDecimal lateFinePerInstallment = totalLateFine.divide(
+                BigDecimal.valueOf(Math.max(1, l.getDurationMonths())), 2, RoundingMode.HALF_UP);
         return LoanResponse.builder().id(l.getId()).groupMemberId(l.getGroupMember().getId())
                 .memberName(l.getGroupMember().getMember().getFirstName() + " "
                         + l.getGroupMember().getMember().getLastName())
@@ -691,22 +703,13 @@ public class LoanWorkflowService {
                 .disbursementDate(l.getDisbursementDate()).maturityDate(l.getMaturityDate())
                 .status(l.getStatus().name()).purpose(l.getPurpose()).rejectionReason(l.getRejectionReason())
                 .totalPaid(paid).remainingBalance(balance)
-                .progress(total.signum() == 0 ? 0
-                        : paid.multiply(BigDecimal.valueOf(100)).divide(total, 0, RoundingMode.DOWN).intValue())
-                .latePaymentFine(l.getLateFineAtApplication() == null
-                        ? (settings == null ? BigDecimal.ZERO : settings.findByGroupId(l.getGroupMember().getGroup().getId())
-                                .map(setting -> calculateLateFine(l.getPrincipalAmount(), setting.getLatePaymentFine()))
-                                .orElse(BigDecimal.ZERO))
-                        : l.getLateFineAtApplication())
-                .latePaymentFinePercentage(settings == null ? BigDecimal.ZERO
-                        : settings.findByGroupId(l.getGroupMember().getGroup().getId())
-                                .map(GroupSettings::getLatePaymentFine).orElse(BigDecimal.ZERO))
+                .progress(total.signum() == 0 ? 0 : paid.multiply(BigDecimal.valueOf(100)).divide(total, 0, RoundingMode.DOWN).intValue())
+                .latePaymentFine(lateFinePerInstallment)
+                .latePaymentFinePercentage(settings == null ? BigDecimal.ZERO : settings.findByGroupId(l.getGroupMember().getGroup().getId()).map(GroupSettings::getLateLoanPaymentFinePercentage).orElse(BigDecimal.ZERO))
                 .consentAcceptedAt(l.getConsentAcceptedAt())
                 .canApprove(reviewer).canDisburse(l.getStatus() == LoanStatus.APPROVED && !self && savedSteps.isEmpty() && authorizationService.hasRole(groupId, GroupRole.ACCOUNTANT)).canCancel((l.getStatus() == LoanStatus.PENDING || l.getStatus() == LoanStatus.UNDER_REVIEW) && (self || reviewer))
-                .approvalSteps(savedSteps.stream().map(item ->
-                        new LoanApprovalStepResponse(item.getStepOrder(), item.getRequiredRole().name(), item.getLabel(), item.getApprovedAt(), item.getApprovedByMemberId())).toList())
-                .approvalEvents(approvalEvents.findByLoanIdOrderByActedAtAscIdAsc(l.getId()).stream().map(item ->
-                        new LoanApprovalEventResponse(item.getStepOrder() == null ? 0 : item.getStepOrder(), item.getAction(), item.getActorMemberId(), item.getReason(), item.getActedAt())).toList())
+                .approvalSteps(savedSteps.stream().map(item -> new LoanApprovalStepResponse(item.getStepOrder(), item.getRequiredRole().name(), item.getLabel(), item.getApprovedAt(), item.getApprovedByMemberId())).toList())
+                .approvalEvents(approvalEvents.findByLoanIdOrderByActedAtAscIdAsc(l.getId()).stream().map(item -> new LoanApprovalEventResponse(item.getStepOrder() == null ? 0 : item.getStepOrder(), item.getAction(), item.getActorMemberId(), item.getReason(), item.getActedAt())).toList())
                 .guarantors(guarantors.findByLoanId(l.getId()).stream().map(item -> new LoanGuarantorOption(
                         item.getId(), item.getGroupMember().getMember().getFirstName() + " " + item.getGroupMember().getMember().getLastName(),
                         item.getGroupMember().getMember().getPhone(), item.getGroupMember().getMember().getAddress(),

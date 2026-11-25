@@ -22,5 +22,6 @@ public class GroupSettingsRequest {
     private BigDecimal defaultInterestRate;
     private Integer defaultLoanDurationMonths;
     private BigDecimal latePaymentFine;
+    private BigDecimal lateLoanPaymentFinePercentage;
     private BigDecimal jamiiContributionPerSharePayment;
 }

@@ -76,6 +76,11 @@ public class GroupSettings extends BaseEntity {
     )
     private BigDecimal latePaymentFine;
 
+    /** Percentage of total loan interest charged as a late fee, shared across installments. */
+    @Column(name = "late_loan_payment_fine_percentage", precision = 10, scale = 4)
+    @Builder.Default
+    private BigDecimal lateLoanPaymentFinePercentage = BigDecimal.ZERO;
+
     @Column(name = "jamii_contribution_per_share_payment", precision = 19, scale = 2)
     @Builder.Default
     private BigDecimal jamiiContributionPerSharePayment = BigDecimal.ZERO;
