@@ -589,14 +589,17 @@ public class LoanWorkflowService {
                     .map(setting -> calculateLateFine(loan.getInterestAmount(), setting.getLateLoanPaymentFinePercentage()))
                     .orElseThrow(() -> new IllegalArgumentException("Loan settings not found."));
         }
-        int installmentCount = Math.max(1, loan.getDurationMonths());
+        List<LoanInstallment> repaymentSchedule = installments.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
+        int installmentCount = repaymentSchedule.size();
+        if (installmentCount == 0) return 0;
         BigDecimal regularFineShare = fine.divide(BigDecimal.valueOf(installmentCount), 2, RoundingMode.DOWN);
         int count = 0;
-        for (LoanInstallment installment : installments.findByLoanIdOrderByInstallmentNumberAsc(loan.getId())) {
+        for (int index = 0; index < repaymentSchedule.size(); index++) {
+            LoanInstallment installment = repaymentSchedule.get(index);
             if (installment.getDueDate().isBefore(today)
                     && installment.getPaidAmount().compareTo(installment.getTotalAmount()) < 0) {
                 installment.setStatus(InstallmentStatus.OVERDUE);
-                BigDecimal installmentFine = installment.getInstallmentNumber() == installmentCount
+                BigDecimal installmentFine = index == installmentCount - 1
                         ? fine.subtract(regularFineShare.multiply(BigDecimal.valueOf(installmentCount - 1L)))
                         : regularFineShare;
                 if (installmentFine.signum() > 0 && orZero(installment.getPenaltyAmount()).signum() == 0) {
@@ -691,7 +694,8 @@ public class LoanWorkflowService {
                         .orElse(BigDecimal.ZERO))
                 : l.getLateFineAtApplication();
         BigDecimal lateFinePerInstallment = totalLateFine.divide(
-                BigDecimal.valueOf(Math.max(1, l.getDurationMonths())), 2, RoundingMode.HALF_UP);
+                BigDecimal.valueOf(Math.max(1, s.size())), 2, RoundingMode.HALF_UP).stripTrailingZeros();
+        if (lateFinePerInstallment.scale() < 0) lateFinePerInstallment = lateFinePerInstallment.setScale(0);
         return LoanResponse.builder().id(l.getId()).groupMemberId(l.getGroupMember().getId())
                 .memberName(l.getGroupMember().getMember().getFirstName() + " "
                         + l.getGroupMember().getMember().getLastName())

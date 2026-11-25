@@ -16,6 +16,7 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import vikoba.service.auth.entity.User;
 import vikoba.service.auth.repository.UserRepository;
+import vikoba.service.notification.WhatsAppOtpService;
 import vikoba.service.common.entity.Notification;
 import vikoba.service.common.repository.NotificationRepository;
 import static org.junit.jupiter.api.Assertions.*;
@@ -28,6 +29,7 @@ class SmsSecretSecurityTest {
     @Mock NotificationRepository notifications;
     @Mock KafkaTemplate<String, String> kafka;
     @Mock PlatformTransactionManager transactionManager;
+    @Mock WhatsAppOtpService whatsAppOtpService;
     @Spy ObjectMapper mapper = new ObjectMapper();
     @InjectMocks SmsNotificationService service;
 

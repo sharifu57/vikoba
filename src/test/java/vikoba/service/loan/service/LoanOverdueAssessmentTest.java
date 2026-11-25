@@ -39,12 +39,12 @@ class LoanOverdueAssessmentTest {
         var row = installment(loan, today.minusDays(1), "3000");
         when(installments.findByLoanIdOrderByInstallmentNumberAsc(7L)).thenReturn(List.of(row));
         assertEquals(1, service.assessLoanOverdue(loan, today));
-        assertEquals(new BigDecimal("2000"), row.getPenaltyAmount());
-        assertEquals(new BigDecimal("9000"), row.getTotalAmount().subtract(row.getPaidAmount()));
+        assertEquals(0, new BigDecimal("2000").compareTo(row.getPenaltyAmount()));
+        assertEquals(0, new BigDecimal("9000").compareTo(row.getTotalAmount().subtract(row.getPaidAmount())));
         assertEquals(InstallmentStatus.OVERDUE, row.getStatus());
         verify(installments).save(row);
         assertEquals(0, service.assessLoanOverdue(loan, today.plusDays(2)));
-        assertEquals(new BigDecimal("12000"), row.getTotalAmount());
+        assertEquals(0, new BigDecimal("12000").compareTo(row.getTotalAmount()));
         row.setPaidAmount(new BigDecimal("12000")); row.setStatus(InstallmentStatus.PAID);
         assertEquals(0, service.assessLoanOverdue(loan, today.plusDays(3)));
         assertEquals(InstallmentStatus.PAID, row.getStatus());
@@ -81,7 +81,7 @@ class LoanOverdueAssessmentTest {
         when(installments.findByLoanIdOrderByInstallmentNumberAsc(7L)).thenReturn(List.of(row));
         var payment = new vikoba.service.loan.dto.LoanRepaymentRequest(); payment.setAmount(new BigDecimal("10000"));
         var result = service.repay(1L, 7L, payment);
-        assertEquals(new BigDecimal("2000"), result.getRemainingBalance());
+        assertEquals(0, new BigDecimal("2000").compareTo(result.getRemainingBalance()));
         assertEquals(InstallmentStatus.OVERDUE, row.getStatus());
         assertEquals(LoanStatus.ACTIVE, loan.getStatus());
         payment.setAmount(new BigDecimal("2000"));

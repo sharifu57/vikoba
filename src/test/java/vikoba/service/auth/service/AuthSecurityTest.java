@@ -20,6 +20,7 @@ import vikoba.service.auth.repository.*;
 import vikoba.service.common.enums.UserStatus;
 import vikoba.service.config.JwtService;
 import vikoba.service.notification.SmsNotificationService;
+import vikoba.service.notification.WhatsAppOtpService;
 import vikoba.service.organization.repository.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -35,6 +36,7 @@ class AuthSecurityTest {
     @Mock GroupSettingsRepository settings;
     @Mock PasswordEncoder passwords;
     @Mock SmsNotificationService sms;
+    @Mock WhatsAppOtpService whatsAppOtpService;
     @Mock MemberRoleRepository memberRoles;
     @Mock RoleRepository roles;
     @Mock MemberPermissionRepository permissions;
@@ -116,7 +118,7 @@ class AuthSecurityTest {
         var login = new vikoba.service.auth.dto.LoginRequest(); login.setPhone(user.getPhone());
         assertTrue(service.lookUp(login).isStatus());
         verify(otps).save(any());
-        verify(sms).send(eq(user.getPhone()), anyString());
+        verify(sms).sendOtp(eq(user.getPhone()), anyString());
     }
 
     @Test void databaseCreationTimestampCannotExtendSmsCooldown() {
@@ -126,7 +128,7 @@ class AuthSecurityTest {
         previous.setExpiresAt(LocalDateTime.now().plusMinutes(3));
         when(otps.findTopByPhoneOrderByIdDesc(user.getPhone())).thenReturn(Optional.of(previous));
         assertTrue(service.resendOtp(resend).isStatus());
-        verify(sms).send(eq(user.getPhone()), anyString());
+        verify(sms).sendOtp(eq(user.getPhone()), anyString());
     }
 
     @Test void resendingInvalidatesOldCodesAcrossPurposes() {
@@ -140,7 +142,7 @@ class AuthSecurityTest {
         ordered.verify(otps).findTopByPhoneOrderByIdDesc(user.getPhone());
         ordered.verify(otps).expireUnusedByPhone(user.getPhone());
         ordered.verify(otps).save(any(OTP.class));
-        ordered.verify(sms).send(eq(user.getPhone()), anyString());
+        ordered.verify(sms).sendOtp(eq(user.getPhone()), anyString());
     }
 
     @Test void arbitraryOtpPurposesAreRejected() {
@@ -186,7 +188,7 @@ class AuthSecurityTest {
         var saved = org.mockito.ArgumentCaptor.forClass(OTP.class);
         verify(otps).save(saved.capture());
         var message = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(sms).send(eq(user.getPhone()), message.capture());
+        verify(sms).sendOtp(eq(user.getPhone()), message.capture());
         assertTrue(message.getValue().matches("(?s)VIKOBA360 verification code: [0-9]{6}.*"));
         String sentCode = message.getValue().replaceFirst("(?s)VIKOBA360 verification code: ([0-9]{6}).*", "$1");
         assertEquals(sentCode, saved.getValue().getCode());
